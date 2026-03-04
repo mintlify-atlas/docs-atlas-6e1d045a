@@ -1,0 +1,211 @@
+{
+  "projectType": "framework",
+  "projectName": "Solace Agent Mesh",
+  "projectDescription": "An event-driven framework for building and orchestrating multi-agent AI systems with seamless integration of AI agents, real-world data sources, and enterprise systems.",
+  "theme": "mint",
+  "primaryColor": "#00C895",
+  "lightColor": "#C2F7FF",
+  "darkColor": "#03213B",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Installation & Configuration",
+            "pages": [
+              "installation-and-configuration/installation",
+              "installation-and-configuration/configuration",
+              "installation-and-configuration/broker-setup",
+              "installation-and-configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/agents",
+              "core-concepts/gateways",
+              "core-concepts/orchestrator",
+              "core-concepts/a2a-protocol",
+              "core-concepts/workflows"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "components/overview",
+              "components/agent-hosts",
+              "components/platform-service",
+              "components/plugins",
+              "components/projects"
+            ]
+          },
+          {
+            "group": "Built-in Tools",
+            "pages": [
+              "built-in-tools/overview",
+              "built-in-tools/artifact-management",
+              "built-in-tools/data-analysis",
+              "built-in-tools/audio-tools",
+              "built-in-tools/image-tools",
+              "built-in-tools/research-tools",
+              "built-in-tools/embeds"
+            ]
+          },
+          {
+            "group": "Developer Guides",
+            "pages": [
+              "guides/creating-custom-agents",
+              "guides/creating-custom-tools",
+              "guides/building-gateways",
+              "guides/mcp-integration",
+              "guides/sql-database-integration",
+              "guides/slack-integration",
+              "guides/workflow-development"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/docker",
+              "deployment/kubernetes",
+              "deployment/production-best-practices"
+            ]
+          },
+          {
+            "group": "Enterprise Features",
+            "pages": [
+              "enterprise/overview",
+              "enterprise/authentication",
+              "enterprise/teams-integration",
+              "enterprise/security",
+              "enterprise/connectors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "api/cli/init",
+              "api/cli/run",
+              "api/cli/add",
+              "api/cli/plugin",
+              "api/cli/task",
+              "api/cli/tools"
+            ]
+          },
+          {
+            "group": "Agent API",
+            "pages": [
+              "api/agent/configuration",
+              "api/agent/lifecycle",
+              "api/agent/callbacks",
+              "api/agent/tools"
+            ]
+          },
+          {
+            "group": "Gateway API",
+            "pages": [
+              "api/gateway/configuration",
+              "api/gateway/rest-api",
+              "api/gateway/websocket"
+            ]
+          },
+          {
+            "group": "Workflow API",
+            "pages": [
+              "api/workflow/configuration",
+              "api/workflow/types",
+              "api/workflow/execution"
+            ]
+          },
+          {
+            "group": "A2A Protocol",
+            "pages": [
+              "api/a2a/message-format",
+              "api/a2a/task-invocation",
+              "api/a2a/agent-discovery",
+              "api/a2a/streaming"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Tutorials",
+        "groups": [
+          {
+            "group": "Beginner",
+            "pages": [
+              "tutorials/hello-world",
+              "tutorials/weather-agent",
+              "tutorials/simple-workflow"
+            ]
+          },
+          {
+            "group": "Intermediate",
+            "pages": [
+              "tutorials/sql-database",
+              "tutorials/mcp-servers",
+              "tutorials/custom-gateway",
+              "tutorials/multi-agent-collaboration"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "tutorials/complex-workflows",
+              "tutorials/rag-implementation",
+              "tutorials/production-deployment"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Event-Driven Multi-Agent Architecture",
+    "Agent Orchestration and Task Delegation",
+    "A2A Protocol for Agent-to-Agent Communication",
+    "Flexible Gateway Integration (REST, WebUI, Slack)",
+    "Built-in Tools for Artifacts, Data Analysis, and Research",
+    "MCP (Model Context Protocol) Support",
+    "YAML-based Configuration",
+    "Workflow Engine (Sequential, Parallel, Map, Switch, Loop)",
+    "Plugin System for Custom Agents and Tools",
+    "CLI for Project Management",
+    "Dynamic Embeds for Context-Dependent Content",
+    "Enterprise Features (OAuth, Teams Integration)"
+  ],
+  "publicApiSurface": [
+    "sam init - Initialize new project",
+    "sam run - Run the agent mesh",
+    "sam add agent - Add new agent",
+    "sam add gateway - Add new gateway",
+    "sam plugin add - Install plugin",
+    "sam task - Manage tasks",
+    "sam tools - Manage tools",
+    "Agent Configuration (YAML)",
+    "Gateway Configuration (YAML)",
+    "Workflow Configuration (YAML)",
+    "A2A Protocol Messages",
+    "Agent Card Schema",
+    "Custom Tool Development API",
+    "MCP Integration API",
+    "Artifact Service API",
+    "Session Service API",
+    "Platform Service REST API"
+  ]
+}
