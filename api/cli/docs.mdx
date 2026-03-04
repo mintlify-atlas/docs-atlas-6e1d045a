@@ -1,0 +1,119 @@
+---
+title: sam docs
+description: Start a local web server to view the built-in documentation
+---
+
+## Overview
+
+The `sam docs` command starts a local HTTP server to view the Solace Agent Mesh documentation that's bundled with the installation. This provides offline access to the complete documentation.
+
+## Syntax
+
+```bash
+sam docs [OPTIONS]
+```
+
+## Options
+
+<ParamField path="-p, --port" type="integer" default="8585">
+  Port to run the documentation server on.
+</ParamField>
+
+<ParamField path="-h, --help" type="flag">
+  Show help message and exit.
+</ParamField>
+
+## Description
+
+The `docs` command searches for the built-in documentation in two locations:
+
+1. **Production documentation**: `<install-dir>/assets/docs` (for installed packages)
+2. **Development documentation**: `<repo-root>/docs/build` (for development environments)
+
+When you run the command, it:
+- Starts an HTTP server on the specified port (default: 8585)
+- Opens your default web browser to the documentation
+- Redirects 404 errors to the introduction page
+- Serves documentation at `/solace-agent-mesh/docs/documentation/getting-started/introduction/`
+
+## Examples
+
+### Start documentation server on default port
+
+```bash
+sam docs
+```
+
+Output:
+```
+Starting documentation server on http://localhost:8585/solace-agent-mesh/docs/documentation/getting-started/introduction/
+```
+
+### Start on custom port
+
+```bash
+sam docs --port 9000
+```
+
+Output:
+```
+Starting documentation server on http://localhost:9000/solace-agent-mesh/docs/documentation/getting-started/introduction/
+```
+
+### View in development mode
+
+If you're working from the source repository with a built docs directory:
+
+```bash
+sam docs
+```
+
+Output:
+```
+Serving development documentation
+Starting documentation server on http://localhost:8585/solace-agent-mesh/docs/documentation/getting-started/introduction/
+```
+
+## Implementation
+
+The command uses Python's built-in `http.server` module with a custom request handler that:
+- Rewrites paths starting with `/solace-agent-mesh` to serve from the root
+- Redirects 404 errors to the introduction page for a better user experience
+
+Source: `cli/commands/docs_cmd.py`
+
+## Stopping the server
+
+Press `Ctrl+C` to stop the documentation server:
+
+```
+^C
+Shutting down documentation server...
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Documentation directory not found">
+    **Error**: `Documentation directory not found. Please build the documentation first.`
+    
+    **Solution**: This means neither the production nor development documentation directories exist. If you're working from source, build the documentation first. If you installed via pip, the documentation should be included automatically.
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    **Error**: `OSError: [Errno 48] Address already in use`
+    
+    **Solution**: Another process is using port 8585. Either:
+    - Stop the other process
+    - Use a different port: `sam docs --port 8586`
+  </Accordion>
+
+  <Accordion title="Browser doesn't open automatically">
+    If your browser doesn't open automatically, manually navigate to the URL shown in the terminal output (e.g., `http://localhost:8585/solace-agent-mesh/docs/documentation/getting-started/introduction/`).
+  </Accordion>
+</AccordionGroup>
+
+## See also
+
+- [sam --version](/api/cli/init) - Check installed version
+- [Online Documentation](https://solacelabs.github.io/solace-agent-mesh/) - Latest online docs

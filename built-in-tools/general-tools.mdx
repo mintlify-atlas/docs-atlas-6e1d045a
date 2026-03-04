@@ -1,0 +1,257 @@
+---
+title: General Utility Tools
+description: Utility tools for file conversion, diagrams, and web requests
+---
+
+General utility tools provide additional functionality for agents including file format conversion, diagram generation, and web requests.
+
+## Tool: convert_file_to_markdown
+
+Converts various file formats (PDF, DOCX, PPTX, XLSX, images, etc.) to Markdown using the MarkItDown library.
+
+### Parameters
+
+<ParamField path="filename" type="string" required>
+  The name of the artifact file to convert. The file must already exist as an artifact in the session.
+</ParamField>
+
+<ParamField path="output_filename" type="string">
+  Optional name for the output Markdown artifact. If not specified, defaults to `{original_filename}.md`.
+</ParamField>
+
+### Supported Formats
+
+- **Documents**: PDF, DOCX, PPTX, XLSX
+- **Images**: PNG, JPG, JPEG, GIF (requires vision model for OCR)
+- **Code**: Python, JavaScript, HTML, and other text formats
+- **Archives**: ZIP files (converts each contained file)
+
+### Usage
+
+```python
+# Convert PDF to Markdown
+result = await convert_file_to_markdown(
+    filename="report.pdf",
+    output_filename="report_text.md",
+    tool_context=context
+)
+
+# Convert Excel spreadsheet
+result = await convert_file_to_markdown(
+    filename="data.xlsx",
+    tool_context=context  # Creates data.xlsx.md
+)
+
+# Convert image with OCR
+result = await convert_file_to_markdown(
+    filename="screenshot.png",
+    output_filename="screenshot_text.md",
+    tool_context=context
+)
+```
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "message": "Successfully converted 'report.pdf' to Markdown",
+  "data": {
+    "output_filename": "report_text.md",
+    "original_filename": "report.pdf",
+    "conversion_stats": {
+      "pages": 12,
+      "images_extracted": 3
+    }
+  }
+}
+```
+
+<Note>
+  The conversion quality depends on the complexity of the source document. PDFs with complex layouts may not convert perfectly to Markdown.
+</Note>
+
+## Tool: mermaid_diagram_generator
+
+Generates diagrams from Mermaid syntax and saves them as PNG images.
+
+### Parameters
+
+<ParamField path="mermaid_code" type="string" required>
+  The Mermaid diagram syntax. See [Mermaid documentation](https://mermaid.js.org/) for syntax reference.
+</ParamField>
+
+<ParamField path="output_filename" type="string" required>
+  The filename for the generated PNG image artifact.
+</ParamField>
+
+<ParamField path="background_color" type="string" default="white">
+  Background color for the diagram. Can be color names (e.g., "white", "transparent") or hex codes (e.g., "#FFFFFF").
+</ParamField>
+
+<ParamField path="theme" type="string" default="default">
+  Mermaid theme to use. Options: `default`, `dark`, `forest`, `neutral`, `base`.
+</ParamField>
+
+### Usage
+
+```python
+# Generate a flowchart
+result = await mermaid_diagram_generator(
+    mermaid_code="""
+    flowchart LR
+        A[Start] --> B{Decision}
+        B -->|Yes| C[Action 1]
+        B -->|No| D[Action 2]
+        C --> E[End]
+        D --> E
+    """,
+    output_filename="process_flow.png",
+    tool_context=context
+)
+
+# Generate sequence diagram with dark theme
+result = await mermaid_diagram_generator(
+    mermaid_code="""
+    sequenceDiagram
+        participant User
+        participant Agent
+        participant Database
+        User->>Agent: Query request
+        Agent->>Database: Fetch data
+        Database-->>Agent: Return results
+        Agent-->>User: Formatted response
+    """,
+    output_filename="sequence.png",
+    theme="dark",
+    background_color="transparent",
+    tool_context=context
+)
+```
+
+### Supported Diagram Types
+
+- Flowcharts
+- Sequence diagrams
+- Class diagrams
+- State diagrams
+- Entity relationship diagrams
+- Gantt charts
+- Pie charts
+- Git graphs
+- User journey diagrams
+
+<Info>
+  The tool uses Mermaid CLI with Playwright for rendering. The generated PNG is saved as an artifact and can be referenced in responses or downloaded.
+</Info>
+
+## Tool: web_request
+
+Makes HTTP requests to external URLs and returns the response content.
+
+### Parameters
+
+<ParamField path="url" type="string" required>
+  The URL to request. Must use HTTP or HTTPS protocol.
+</ParamField>
+
+<ParamField path="method" type="string" default="GET">
+  HTTP method to use. Options: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`.
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Optional HTTP headers to include in the request. Provide as a dictionary of header name/value pairs.
+</ParamField>
+
+<ParamField path="body" type="string">
+  Optional request body for POST/PUT/PATCH requests. Can be JSON string or other format.
+</ParamField>
+
+<ParamField path="timeout" type="integer" default="30">
+  Request timeout in seconds.
+</ParamField>
+
+### Usage
+
+```python
+# Simple GET request
+result = await web_request(
+    url="https://api.example.com/data",
+    tool_context=context
+)
+
+# POST request with JSON body
+result = await web_request(
+    url="https://api.example.com/submit",
+    method="POST",
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer token123"
+    },
+    body='{"key": "value", "number": 42}',
+    tool_context=context
+)
+
+# Request with custom timeout
+result = await web_request(
+    url="https://slow-api.example.com/resource",
+    timeout=60,
+    tool_context=context
+)
+```
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "data": {
+    "status_code": 200,
+    "headers": {
+      "content-type": "application/json",
+      "content-length": "1024"
+    },
+    "body": "{\"result\": \"success\", \"data\": [...]}"
+  }
+}
+```
+
+<Warning>
+  Be cautious when making web requests:
+  - Only request trusted URLs
+  - Respect rate limits and API terms of service
+  - Don't expose sensitive credentials in requests
+  - Consider security implications of processing external content
+</Warning>
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="File conversion" icon="shield-halved">
+    When converting files, be aware that malicious files could potentially exploit parsing vulnerabilities. Only convert files from trusted sources.
+  </Card>
+  
+  <Card title="Web requests" icon="globe">
+    Web requests can expose your agent to:
+    - Malicious content
+    - Data exfiltration
+    - SSRF attacks
+    
+    Consider implementing allowlists for permitted domains.
+  </Card>
+  
+  <Card title="Diagram generation" icon="diagram-project">
+    Mermaid diagrams are generally safe, but extremely large or complex diagrams may consume excessive resources.
+  </Card>
+  
+  <Card title="Resource limits" icon="gauge">
+    All tools respect configured timeout and size limits to prevent resource exhaustion.
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Artifact Management](/built-in-tools/artifact-management) - Managing tool outputs
+- [Image Tools](/built-in-tools/image-tools) - Image generation and analysis
+- [Research Tools](/built-in-tools/research-tools) - Web search capabilities
+- [Tool Configuration](/api/agent/tools) - Configure tool behavior

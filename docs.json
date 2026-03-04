@@ -74,6 +74,7 @@
               "built-in-tools/audio-tools",
               "built-in-tools/image-tools",
               "built-in-tools/research-tools",
+              "built-in-tools/general-tools",
               "built-in-tools/embeds"
             ]
           },
@@ -121,7 +122,9 @@
               "api/cli/add",
               "api/cli/plugin",
               "api/cli/task",
-              "api/cli/tools"
+              "api/cli/tools",
+              "api/cli/docs",
+              "api/cli/eval"
             ]
           },
           {

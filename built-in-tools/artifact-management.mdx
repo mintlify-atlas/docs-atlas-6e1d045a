@@ -310,6 +310,178 @@ All artifacts include metadata that provides context and schema information:
   </Accordion>
 </AccordionGroup>
 
+## Tool: append_to_artifact
+
+Appends a chunk of content to an existing artifact, creating a new version. Useful for building up files incrementally without loading the entire content into memory.
+
+### Parameters
+
+<ParamField path="filename" type="string" required>
+  The name of the artifact to append to. May contain embeds.
+</ParamField>
+
+<ParamField path="content_chunk" type="string" required>
+  The chunk of content to append (max ~3KB recommended). If `mime_type` suggests binary content, this should be base64 encoded. May contain embeds.
+</ParamField>
+
+<ParamField path="mime_type" type="string" required>
+  The MIME type of the content chunk. Helps determine if base64 decoding is needed. The overall artifact's MIME type is preserved from its latest version.
+</ParamField>
+
+### Usage
+
+```python
+# Append text to a log file
+result = await append_to_artifact(
+    filename="application.log",
+    content_chunk="[2024-01-15 10:30:45] Server started successfully\n",
+    mime_type="text/plain",
+    tool_context=context
+)
+
+# Append CSV rows incrementally
+result = await append_to_artifact(
+    filename="transactions.csv",
+    content_chunk="TX-12345,2024-01-15,149.99,completed\n",
+    mime_type="text/csv",
+    tool_context=context
+)
+```
+
+<Note>
+  Keep chunk sizes small (recommended max 3KB) to avoid LLM context window issues. For larger files, make multiple append calls.
+</Note>
+
+## Tool: delete_artifact
+
+Deletes all versions of an artifact. Requires explicit confirmation for safety.
+
+### Parameters
+
+<ParamField path="filename" type="string" required>
+  The name of the artifact to delete.
+</ParamField>
+
+<ParamField path="version" type="integer">
+  Reserved for future use. Version-specific deletion is not currently supported and will return an error if specified.
+</ParamField>
+
+<ParamField path="confirm_delete" type="boolean">
+  Must be set to `true` to actually perform the deletion. If `false` or omitted, returns a confirmation prompt with details about what will be deleted (including version count).
+</ParamField>
+
+### Usage
+
+```python
+# First call without confirmation shows what will be deleted
+result = await delete_artifact(
+    filename="temp_data.csv",
+    tool_context=context
+)
+# Returns: "Are you sure you want to delete 'temp_data.csv' (3 versions)? Set confirm_delete=True to proceed."
+
+# Second call with confirmation performs the deletion
+result = await delete_artifact(
+    filename="temp_data.csv",
+    confirm_delete=True,
+    tool_context=context
+)
+# Returns: "Artifact 'temp_data.csv' (3 versions) deleted successfully."
+```
+
+<Warning>
+  This operation deletes **all versions** of the artifact and cannot be undone. The two-step confirmation process helps prevent accidental deletions.
+</Warning>
+
+## Tool: artifact_search_and_replace_regex
+
+Performs search and replace operations on an artifact's text content using either literal string matching or regular expressions. Supports both single replacements and atomic batch replacements.
+
+### Parameters
+
+#### Single Replacement Mode
+
+<ParamField path="filename" type="string" required>
+  The name (and optional `:version`) of the artifact to search/replace in.
+</ParamField>
+
+<ParamField path="search_expression" type="string">
+  The pattern to search for. If `is_regexp` is true, this is treated as a regular expression. Otherwise, it's a literal string. Do not use with `replacements`.
+</ParamField>
+
+<ParamField path="replace_expression" type="string">
+  The replacement text. For regex mode, supports capture group references using `$1`, `$2`, etc. Use `$$` to insert a literal dollar sign. Do not use with `replacements`.
+</ParamField>
+
+<ParamField path="is_regexp" type="boolean" default="false">
+  If true, treat `search_expression` as a regular expression. If false, treat as literal string.
+</ParamField>
+
+<ParamField path="regexp_flags" type="string">
+  Regular expression flags (e.g., `"i"` for case-insensitive, `"m"` for multiline). Only used in regex mode.
+</ParamField>
+
+#### Batch Replacement Mode
+
+<ParamField path="replacements" type="array">
+  Array of replacement operations to perform atomically. Each object should have `search`, `replace`, `is_regexp`, and optional `regexp_flags` fields.
+</ParamField>
+
+### Usage
+
+#### Literal string replacement
+
+```python
+# Replace all occurrences of a literal string
+result = await artifact_search_and_replace_regex(
+    filename="config.yaml",
+    search_expression="localhost:8080",
+    replace_expression="production-server.com:443",
+    is_regexp=False,
+    tool_context=context
+)
+```
+
+#### Regular expression replacement
+
+```python
+# Replace dates in MM/DD/YYYY format with YYYY-MM-DD
+result = await artifact_search_and_replace_regex(
+    filename="report.txt",
+    search_expression=r"(\d{2})/(\d{2})/(\d{4})",
+    replace_expression="$3-$1-$2",
+    is_regexp=True,
+    tool_context=context
+)
+```
+
+#### Batch replacements
+
+```python
+# Perform multiple replacements atomically
+result = await artifact_search_and_replace_regex(
+    filename="source_code.py",
+    replacements=[
+        {
+            "search": "old_function_name",
+            "replace": "new_function_name",
+            "is_regexp": False
+        },
+        {
+            "search": r"# TODO:.*$",
+            "replace": "# DONE:",
+            "is_regexp": True,
+            "regexp_flags": "m"
+        }
+    ],
+    tool_context=context
+)
+```
+
+<Info>
+  Batch mode is more efficient than multiple single replacement calls because it processes all replacements in a single atomic operation, creating only one new version.
+</Info>
+
 ## Error Handling
 
 Common error scenarios and how to handle them:

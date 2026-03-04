@@ -1,0 +1,189 @@
+---
+title: sam eval
+description: Run evaluation test suites to measure agent performance
+---
+
+## Overview
+
+The `sam eval` command runs evaluation test suites to measure and validate the performance of your AI agents. This is useful for regression testing, quality assurance, and continuous improvement of agent responses.
+
+## Syntax
+
+```bash
+sam eval <PATH> [OPTIONS]
+```
+
+## Arguments
+
+<ParamField path="PATH" type="string" required>
+  Path to the evaluation test suite configuration file (YAML format).
+  
+  **Example**: `path/to/evaluation_suite.yaml`
+</ParamField>
+
+## Options
+
+<ParamField path="-v, --verbose" type="flag">
+  Enable verbose output to see detailed evaluation progress and results.
+</ParamField>
+
+<ParamField path="-h, --help" type="flag">
+  Show help message and exit.
+</ParamField>
+
+## Description
+
+The evaluation command:
+1. Loads the test suite configuration from the specified YAML file
+2. Runs each test case against your agent mesh
+3. Compares actual responses against expected outputs
+4. Generates evaluation metrics and reports
+
+The command automatically sets the logging configuration path to `configs/logging_config.yaml` if it exists in your project root.
+
+## Test Suite Configuration
+
+An evaluation test suite YAML file defines test cases with expected inputs and outputs. Example structure:
+
+```yaml test_suite.yaml
+name: "Agent Evaluation Suite"
+description: "Test suite for validating agent responses"
+
+test_cases:
+  - name: "Weather query test"
+    input: "What's the weather in San Francisco?"
+    expected_keywords:
+      - "temperature"
+      - "San Francisco"
+    
+  - name: "Data analysis test"
+    input: "Analyze the sales data in quarterly_report.csv"
+    expected_keywords:
+      - "sales"
+      - "analysis"
+      - "quarterly"
+```
+
+<Note>
+  The exact schema for test suite configuration files is defined in the `evaluation` module. Refer to `evaluation/run.py` for the complete specification.
+</Note>
+
+## Examples
+
+### Run basic evaluation
+
+```bash
+sam eval tests/agent_eval.yaml
+```
+
+Output:
+```
+Starting evaluation with test_suite_config: /path/to/tests/agent_eval.yaml
+Running test case 1/5: Weather query test
+✓ Passed
+Running test case 2/5: Data analysis test
+✓ Passed
+...
+Evaluation completed successfully.
+```
+
+### Run with verbose output
+
+```bash
+sam eval tests/agent_eval.yaml --verbose
+```
+
+This shows detailed information about:
+- Each test case execution
+- Agent responses
+- Scoring metrics
+- Performance timing
+
+### Organize evaluation suites
+
+```bash
+# Functional tests
+sam eval tests/functional/core_features.yaml
+
+# Regression tests
+sam eval tests/regression/v2_compatibility.yaml
+
+# Performance tests
+sam eval tests/performance/response_time.yaml
+```
+
+## Evaluation Metrics
+
+The evaluation framework can measure:
+
+- **Response accuracy**: Keyword matching, semantic similarity
+- **Response time**: Latency and throughput
+- **Tool usage**: Correct tool selection and execution
+- **Error handling**: Graceful degradation
+- **Consistency**: Similar inputs producing similar outputs
+
+<Info>
+  Specific metrics available depend on your test suite configuration and the evaluation framework setup.
+</Info>
+
+## Implementation
+
+The command delegates to `evaluation.run.main()` which orchestrates:
+1. Test suite loading and validation
+2. Agent mesh interaction
+3. Response evaluation
+4. Results aggregation and reporting
+
+Source: `cli/commands/eval_cmd.py`, `evaluation/run.py`
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Configuration file not found">
+    **Error**: File path does not exist
+    
+    **Solution**: Verify the path to your test suite YAML file is correct. Use absolute paths or paths relative to your current working directory.
+  </Accordion>
+
+  <Accordion title="Evaluation error">
+    **Error**: `An error occurred during evaluation: <error message>`
+    
+    **Solution**: Check that:
+    - Your agent mesh is properly configured
+    - Required services (broker, LLM) are accessible
+    - Test suite YAML is valid
+    - Use `--verbose` flag for detailed error information
+  </Accordion>
+
+  <Accordion title="Missing evaluation module">
+    **Error**: Cannot import from `evaluation.run`
+    
+    **Solution**: The evaluation framework must be properly installed. Check that all required dependencies are installed in your environment.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Version control" icon="code-branch">
+    Keep test suites in version control alongside your agent configurations to track changes over time.
+  </Card>
+  
+  <Card title="CI/CD integration" icon="gears">
+    Run evaluations in your CI/CD pipeline to catch regressions before deployment.
+  </Card>
+  
+  <Card title="Incremental testing" icon="layer-group">
+    Start with basic test cases and gradually add more complex scenarios as your agents evolve.
+  </Card>
+  
+  <Card title="Baseline metrics" icon="chart-line">
+    Establish baseline performance metrics for your agents and monitor for degradation.
+  </Card>
+</CardGroup>
+
+## See also
+
+- [sam run](/api/cli/run) - Run your agent mesh
+- [sam task](/api/cli/task) - Send individual tasks for testing
+- [Agent Configuration](/api/agent/configuration) - Configure agent behavior
