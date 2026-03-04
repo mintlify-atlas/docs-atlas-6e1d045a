@@ -1,0 +1,970 @@
+---
+title: Production Best Practices
+description: Security, monitoring, and operational best practices for production deployments
+---
+
+# Production Best Practices
+
+Deploying Solace Agent Mesh in production requires careful attention to security, reliability, performance, and operational excellence. This guide covers essential best practices to ensure your deployment is production-ready.
+
+## Security Best Practices
+
+### Secrets Management
+
+**Never store sensitive information in code or configuration files.** Use dedicated secret management solutions:
+
+<AccordionGroup>
+  <Accordion title="Kubernetes Secrets" icon="kubernetes">
+    ```yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: sam-secrets
+      namespace: solace-agent-mesh
+    type: Opaque
+    stringData:
+      SOLACE_BROKER_PASSWORD: "your-password"
+      LLM_SERVICE_API_KEY: "sk-..."
+      SESSION_SECRET_KEY: "your-secret-key"
+      DATABASE_URL: "postgresql://user:pass@host/db"
+    ```
+
+    **Best practices:**
+    - Use `kubectl create secret` instead of YAML files
+    - Enable encryption at rest in your cluster
+    - Use RBAC to restrict secret access
+    - Consider Sealed Secrets or External Secrets Operator
+  </Accordion>
+
+  <Accordion title="AWS Secrets Manager" icon="aws">
+    ```python
+    import boto3
+    import json
+    
+    def get_secret(secret_name):
+        client = boto3.client('secretsmanager', region_name='us-east-1')
+        response = client.get_secret_value(SecretId=secret_name)
+        return json.loads(response['SecretString'])
+    
+    # In your deployment script
+    secrets = get_secret('solace-agent-mesh/prod')
+    ```
+
+    **Integration:**
+    - Use IAM roles for authentication
+    - Enable automatic rotation
+    - Use AWS Secrets and Configuration Provider (ASCP) for Kubernetes
+  </Accordion>
+
+  <Accordion title="HashiCorp Vault" icon="vault">
+    ```bash
+    # Store secrets in Vault
+    vault kv put secret/sam/prod \
+      broker_password="your-password" \
+      llm_api_key="sk-..." \
+      session_secret="your-secret"
+    
+    # Use Vault Agent for injection
+    vault agent -config=agent-config.hcl
+    ```
+
+    **Integration:**
+    - Use Vault Agent for sidecar injection
+    - Configure dynamic secrets for databases
+    - Enable audit logging
+  </Accordion>
+
+  <Accordion title="Azure Key Vault" icon="microsoft">
+    ```bash
+    # Store secrets in Key Vault
+    az keyvault secret set \
+      --vault-name sam-prod-vault \
+      --name llm-api-key \
+      --value "sk-..."
+    
+    # Use Azure Key Vault Provider for Secrets Store CSI Driver
+    kubectl apply -f secretproviderclass.yaml
+    ```
+
+    **Integration:**
+    - Use managed identities for authentication
+    - Enable soft delete and purge protection
+    - Use Azure Key Vault Provider for Kubernetes
+  </Accordion>
+</AccordionGroup>
+
+### TLS/SSL Configuration
+
+**Encrypt all communication channels:**
+
+**Solace Event Broker:**
+```yaml
+broker:
+  url: wss://your-broker.messaging.solace.cloud:443  # Use WSS, not WS
+  # For self-hosted brokers with custom CA
+  ssl_trust_store: /path/to/ca-cert.pem
+```
+
+**Database Connections:**
+```bash
+# PostgreSQL with TLS
+DATABASE_URL="postgresql://user:pass@host:5432/sam?sslmode=require"
+
+# With custom CA certificate
+DATABASE_URL="postgresql://user:pass@host:5432/sam?sslmode=verify-full&sslrootcert=/path/to/ca.pem"
+```
+
+**Ingress/Load Balancer:**
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: solace-agent-mesh
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+spec:
+  tls:
+    - hosts:
+        - agent-mesh.example.com
+      secretName: agent-mesh-tls
+```
+
+### Container Security
+
+**Run as non-root user:**
+
+Agent Mesh containers run as UID 999 by default:
+
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  fsGroup: 999
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+```
+
+**Image Security:**
+
+```bash
+# Scan images for vulnerabilities
+trivy image solace/solace-agent-mesh:latest
+
+# Use specific versions, not 'latest'
+image: solace/solace-agent-mesh:1.2.3
+
+# Verify image signatures (if available)
+cosign verify gcr.io/gcp-maas-prod/solace-agent-mesh:1.2.3
+```
+
+**Network Policies:**
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sam-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: solace-agent-mesh
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: 5002
+        - port: 8000
+  egress:
+    # Allow only necessary outbound connections
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+```
+
+### Authentication and Authorization
+
+**Configure Identity Provider (IdP):**
+
+```yaml
+# SAML/OIDC configuration
+auth:
+  provider: saml
+  saml:
+    entity_id: https://agent-mesh.example.com
+    sso_url: https://idp.example.com/sso
+    certificate: /path/to/idp-cert.pem
+  
+  # Or use OIDC
+  oidc:
+    issuer_url: https://accounts.google.com
+    client_id: your-client-id
+    client_secret: your-client-secret
+```
+
+**API Authentication:**
+
+```bash
+# Use API keys for programmatic access
+API_KEY_HEADER="X-API-Key"
+API_KEY_VALUE="your-secure-api-key"
+```
+
+### Data Protection
+
+**Encrypt Sensitive Data:**
+
+```yaml
+# Database encryption at rest (RDS example)
+aws rds create-db-instance \
+  --db-instance-identifier sam-prod \
+  --storage-encrypted \
+  --kms-key-id arn:aws:kms:region:account:key/key-id
+
+# S3 bucket encryption
+aws s3api put-bucket-encryption \
+  --bucket your-bucket \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "aws:kms",
+        "KMSMasterKeyID": "arn:aws:kms:region:account:key/key-id"
+      }
+    }]
+  }'
+```
+
+**Backup and Recovery:**
+
+```bash
+# Automated PostgreSQL backups
+aws rds modify-db-instance \
+  --db-instance-identifier sam-prod \
+  --backup-retention-period 7 \
+  --preferred-backup-window "03:00-04:00"
+
+# S3 versioning and lifecycle
+aws s3api put-bucket-versioning \
+  --bucket your-bucket \
+  --versioning-configuration Status=Enabled
+```
+
+## High Availability and Reliability
+
+### Multi-Replica Deployment
+
+**Run multiple instances:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: solace-agent-mesh
+spec:
+  replicas: 3  # Minimum 3 for HA
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero downtime
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: solace-agent-mesh
+                topologyKey: kubernetes.io/hostname
+```
+
+### Queue Configuration
+
+**Use durable queues for container environments:**
+
+```yaml
+broker:
+  temporary_queue: false  # Use durable queues
+```
+
+**Configure Queue Template in Solace Cloud:**
+
+1. Navigate to Message VPNs → Queues → Templates
+2. Create template:
+   - Queue Name Filter: `sam/>`
+   - Respect TTL: `true`
+   - Maximum TTL: `18000` seconds (5 hours)
+   - Max Message Size: `10000000` bytes (10 MB)
+
+This prevents message accumulation when agents restart.
+
+### Health Checks and Auto-Recovery
+
+**Configure comprehensive health checks:**
+
+```yaml
+containers:
+  - name: agent-mesh
+    # Startup probe - gives app time to initialize
+    startupProbe:
+      httpGet:
+        path: /startup
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 30  # 150s total
+    
+    # Readiness probe - removes from service when not ready
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8080
+      periodSeconds: 10
+      failureThreshold: 3
+    
+    # Liveness probe - restarts container when unhealthy
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 30
+      failureThreshold: 3
+    
+    # Restart policy
+    restartPolicy: Always
+```
+
+### Resource Quotas and Limits
+
+**Define resource boundaries:**
+
+```yaml
+resources:
+  requests:
+    cpu: 175m
+    memory: 625Mi
+  limits:
+    cpu: 200m
+    memory: 1Gi
+
+# Namespace resource quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sam-quota
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 16Gi
+    limits.cpu: "8"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "10"
+```
+
+### Database High Availability
+
+**Use managed database services with HA:**
+
+**AWS RDS:**
+```bash
+aws rds create-db-instance \
+  --db-instance-identifier sam-prod \
+  --multi-az \
+  --db-instance-class db.r6g.large \
+  --engine postgres \
+  --engine-version 17.2
+```
+
+**Azure Database:**
+```bash
+az postgres flexible-server create \
+  --name sam-prod \
+  --resource-group sam-rg \
+  --sku-name Standard_D4s_v3 \
+  --high-availability Enabled \
+  --tier GeneralPurpose
+```
+
+**Google Cloud SQL:**
+```bash
+gcloud sql instances create sam-prod \
+  --database-version=POSTGRES_17 \
+  --tier=db-custom-4-16384 \
+  --availability-type=REGIONAL \
+  --region=us-central1
+```
+
+## Performance Optimization
+
+### Database Performance
+
+**Connection Pooling:**
+
+```bash
+# Use PgBouncer for connection pooling
+DATABASE_URL="postgresql://user:pass@pgbouncer:6432/sam?pool_size=20&max_overflow=10"
+```
+
+**Indexing:**
+
+```sql
+-- Add indexes for common queries
+CREATE INDEX idx_session_user_id ON sessions(user_id);
+CREATE INDEX idx_artifact_created_at ON artifacts(created_at DESC);
+```
+
+**Database Tuning:**
+
+```bash
+# PostgreSQL configuration
+shared_buffers = 4GB
+effective_cache_size = 12GB
+maintenance_work_mem = 1GB
+wal_buffers = 16MB
+max_connections = 200
+```
+
+### Object Storage Optimization
+
+**S3 Performance:**
+
+```bash
+# Enable S3 Transfer Acceleration
+aws s3api put-bucket-accelerate-configuration \
+  --bucket your-bucket \
+  --accelerate-configuration Status=Enabled
+
+# Use intelligent tiering for cost optimization
+aws s3api put-bucket-intelligent-tiering-configuration \
+  --bucket your-bucket \
+  --id sam-tiering \
+  --intelligent-tiering-configuration '{
+    "Id": "sam-tiering",
+    "Status": "Enabled",
+    "Tierings": [
+      {"Days": 90, "AccessTier": "ARCHIVE_ACCESS"},
+      {"Days": 180, "AccessTier": "DEEP_ARCHIVE_ACCESS"}
+    ]
+  }'
+```
+
+### Autoscaling
+
+**Horizontal Pod Autoscaling:**
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sam-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: solace-agent-mesh
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Don't scale down too quickly
+    scaleUp:
+      stabilizationWindowSeconds: 60   # Scale up faster
+```
+
+**Cluster Autoscaling:**
+
+Enable cluster autoscaler in your Kubernetes platform to automatically add nodes when needed.
+
+### Caching Strategies
+
+**LLM Prompt Caching:**
+
+```yaml
+models:
+  planning:
+    model: openai/gpt-4
+    cache_strategy: "5m"  # Cache prompts for 5 minutes
+  
+  general:
+    model: openai/gpt-4
+    cache_strategy: "1h"  # Cache for 1 hour
+```
+
+## Monitoring and Observability
+
+### Application Logging
+
+**Structured JSON Logging:**
+
+```yaml
+# logging_config.yaml
+version: 1
+formatters:
+  jsonFormatter:
+    "()": pythonjsonlogger.json.JsonFormatter
+    format: "%(timestamp)s %(levelname)s %(name)s %(message)s"
+    timestamp: "timestamp"
+
+handlers:
+  streamHandler:
+    class: logging.StreamHandler
+    formatter: jsonFormatter
+    stream: ext://sys.stdout
+
+root:
+  level: INFO
+  handlers: [streamHandler]
+```
+
+**Centralized Logging:**
+
+```yaml
+# FluentBit DaemonSet for log collection
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*solace-agent-mesh*.log
+        Parser            docker
+        Tag               sam.*
+    
+    [OUTPUT]
+        Name              es
+        Match             sam.*
+        Host              elasticsearch.logging.svc
+        Port              9200
+        Index             sam-logs
+        Type              _doc
+```
+
+### Metrics and Monitoring
+
+**Prometheus Metrics:**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: solace-agent-mesh-metrics
+  labels:
+    app: solace-agent-mesh
+spec:
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+  selector:
+    app: solace-agent-mesh
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: solace-agent-mesh
+spec:
+  selector:
+    matchLabels:
+      app: solace-agent-mesh
+  endpoints:
+    - port: metrics
+      interval: 30s
+```
+
+**Key Metrics to Monitor:**
+
+- Request rate and latency
+- Error rates (4xx, 5xx)
+- LLM API call latency and costs
+- Database connection pool usage
+- Message queue depth
+- CPU and memory usage
+- Disk I/O and storage usage
+
+### Alerting
+
+**PrometheusRule for Alerts:**
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sam-alerts
+spec:
+  groups:
+    - name: solace-agent-mesh
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+          for: 5m
+          annotations:
+            summary: "High error rate detected"
+          labels:
+            severity: critical
+        
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          annotations:
+            summary: "Pod is crash looping"
+          labels:
+            severity: warning
+        
+        - alert: DatabaseConnectionFailure
+          expr: |
+            sam_database_connection_failures_total > 0
+          for: 2m
+          annotations:
+            summary: "Database connection failures"
+          labels:
+            severity: critical
+```
+
+### Distributed Tracing
+
+**OpenTelemetry Integration:**
+
+```yaml
+environment:
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger-collector:4317
+  OTEL_SERVICE_NAME: solace-agent-mesh
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"  # Sample 10% of traces
+```
+
+## Operational Excellence
+
+### CI/CD Pipeline
+
+**Example GitLab CI:**
+
+```yaml
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE: gcr.io/my-project/solace-agent-mesh
+
+test:
+  stage: test
+  script:
+    - pytest tests/
+    - trivy image --severity HIGH,CRITICAL solace/solace-agent-mesh:latest
+
+build:
+  stage: build
+  script:
+    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHA .
+    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHA
+  only:
+    - main
+
+deploy-staging:
+  stage: deploy
+  script:
+    - helm upgrade --install sam-staging ./charts/sam \
+        --set image.tag=$CI_COMMIT_SHA \
+        -f values-staging.yaml \
+        -n staging
+  only:
+    - main
+
+deploy-production:
+  stage: deploy
+  script:
+    - helm upgrade --install sam-prod ./charts/sam \
+        --set image.tag=$CI_COMMIT_SHA \
+        -f values-production.yaml \
+        -n production
+  when: manual
+  only:
+    - main
+```
+
+### Disaster Recovery
+
+**Backup Strategy:**
+
+```bash
+#!/bin/bash
+# backup-sam.sh - Daily backup script
+
+# Backup PostgreSQL
+pg_dump -h $DB_HOST -U $DB_USER -d sam | \
+  gzip > /backups/sam-db-$(date +%Y%m%d).sql.gz
+
+# Sync to S3
+aws s3 sync /backups/ s3://sam-backups/$(date +%Y/%m)/
+
+# Retain backups for 30 days
+find /backups/ -name "*.sql.gz" -mtime +30 -delete
+```
+
+**Recovery Testing:**
+
+```bash
+# Test database restore quarterly
+psql -h $TEST_DB_HOST -U $DB_USER -d sam < backup.sql
+
+# Verify artifact restoration
+aws s3 sync s3://sam-backups/artifacts/ /tmp/test-restore/
+```
+
+### Configuration Management
+
+**GitOps with ArgoCD:**
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: solace-agent-mesh
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/sam-configs
+    targetRevision: HEAD
+    path: kubernetes/production
+    helm:
+      valueFiles:
+        - values-production.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: solace-agent-mesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+### Documentation
+
+**Maintain runbooks for common scenarios:**
+
+- Deployment procedures
+- Rollback procedures
+- Incident response playbooks
+- Disaster recovery procedures
+- Capacity planning guidelines
+- Security incident response
+
+## Cost Optimization
+
+### Resource Right-Sizing
+
+**Monitor and adjust:**
+
+```bash
+# Analyze resource usage
+kubectl top pods -n solace-agent-mesh
+kubectl top nodes
+
+# Use Vertical Pod Autoscaler for recommendations
+kubectl describe vpa sam-vpa -n solace-agent-mesh
+```
+
+### Storage Optimization
+
+**Lifecycle Policies:**
+
+```json
+{
+  "Rules": [
+    {
+      "Id": "MoveToIA",
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 90,
+          "StorageClass": "STANDARD_IA"
+        },
+        {
+          "Days": 180,
+          "StorageClass": "GLACIER"
+        }
+      ]
+    },
+    {
+      "Id": "DeleteOldArtifacts",
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 365
+      }
+    }
+  ]
+}
+```
+
+### LLM Cost Management
+
+**Monitor and optimize:**
+
+```yaml
+# Use cheaper models for non-critical tasks
+models:
+  planning:
+    model: openai/gpt-4  # Premium model
+  general:
+    model: openai/gpt-3.5-turbo  # Cost-effective
+  
+# Set token limits
+max_tokens: 2000
+
+# Enable caching
+cache_strategy: "5m"
+```
+
+## Compliance and Governance
+
+### Audit Logging
+
+**Enable comprehensive audit trails:**
+
+```yaml
+# Kubernetes audit policy
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+    namespaces: ["solace-agent-mesh"]
+```
+
+### Data Residency
+
+**Ensure data stays in required regions:**
+
+```bash
+# Deploy in specific region
+REGION=eu-west-1
+
+# Use regional database
+DATABASE_URL=postgresql://...:5432/sam?options=-c%20timezone=UTC
+
+# Use regional S3 bucket
+ARTIFACT_STORAGE_S3_REGION=eu-west-1
+```
+
+### Access Control
+
+**Implement principle of least privilege:**
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sam-operator
+  namespace: solace-agent-mesh
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+```
+
+## Checklist
+
+Before going to production, verify:
+
+<Accordion title="Security Checklist" icon="shield-check">
+  - [ ] Secrets stored in secure vault (not in code)
+  - [ ] TLS enabled for all connections
+  - [ ] Containers run as non-root
+  - [ ] Network policies configured
+  - [ ] Image vulnerability scanning enabled
+  - [ ] Authentication/authorization configured
+  - [ ] Database encryption at rest enabled
+  - [ ] S3 bucket encryption enabled
+  - [ ] Regular security audits scheduled
+</Accordion>
+
+<Accordion title="Reliability Checklist" icon="shield-heart">
+  - [ ] Minimum 3 replicas configured
+  - [ ] Health checks implemented
+  - [ ] Resource limits defined
+  - [ ] Durable queues configured
+  - [ ] Database HA enabled
+  - [ ] Backup and restore tested
+  - [ ] Disaster recovery plan documented
+  - [ ] Auto-scaling configured
+</Accordion>
+
+<Accordion title="Observability Checklist" icon="chart-line">
+  - [ ] Structured logging enabled
+  - [ ] Centralized log aggregation
+  - [ ] Metrics collection configured
+  - [ ] Alerts defined and tested
+  - [ ] Distributed tracing enabled
+  - [ ] Dashboards created
+  - [ ] On-call rotation established
+</Accordion>
+
+<Accordion title="Operational Checklist" icon="gears">
+  - [ ] CI/CD pipeline configured
+  - [ ] GitOps workflow established
+  - [ ] Runbooks documented
+  - [ ] Incident response procedures
+  - [ ] Regular backup testing
+  - [ ] Capacity planning done
+  - [ ] Cost monitoring enabled
+  - [ ] Compliance requirements met
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Health Checks" icon="heart-pulse" href="/deployment/production-best-practices#monitoring">
+    Configure comprehensive health monitoring
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/deployment/production-best-practices#monitoring">
+    Set up monitoring and tracing
+  </Card>
+  <Card title="Logging" icon="file-lines" href="/deployment/production-best-practices#monitoring">
+    Configure application logging
+  </Card>
+  <Card title="Configuration" icon="gears" href="/installation-and-configuration/configuration">
+    Complete configuration reference
+  </Card>
+</CardGroup>

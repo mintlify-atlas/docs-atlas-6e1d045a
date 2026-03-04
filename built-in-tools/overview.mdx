@@ -1,0 +1,125 @@
+---
+title: Built-in Tools Overview
+description: Comprehensive guide to Solace Agent Mesh built-in tools
+---
+
+Solace Agent Mesh provides a powerful suite of built-in tools that enable agents to perform various tasks including artifact management, data analysis, multimedia processing, and web research.
+
+## Tool Categories
+
+The built-in tools are organized into the following categories:
+
+### Artifact Management
+Tools for creating, reading, updating, and managing artifacts within agent sessions.
+- [Artifact Management Tools](/built-in-tools/artifact-management)
+
+### Data Analysis
+Tools for analyzing data, creating visualizations, and generating charts.
+- [Data Analysis Tools](/built-in-tools/data-analysis)
+
+### Audio Tools
+Tools for text-to-speech generation, audio transcription, and audio manipulation.
+- [Audio Tools](/built-in-tools/audio-tools)
+
+### Image Tools
+Tools for image generation, editing, and analysis using AI models.
+- [Image Tools](/built-in-tools/image-tools)
+
+### Research Tools
+Tools for web search and comprehensive research capabilities.
+- [Research Tools](/built-in-tools/research-tools)
+
+### Embeds
+A powerful system for dynamic content interpolation and artifact references.
+- [Embeds System](/built-in-tools/embeds)
+
+## Tool Configuration
+
+Built-in tools are configured in your agent's YAML configuration file under the `builtin_tools` section:
+
+```yaml
+builtin_tools:
+  - name: list_artifacts
+  - name: load_artifact
+  - name: text_to_speech
+    config:
+      gemini_api_key: ${GEMINI_API_KEY}
+      model: gemini-2.5-flash-preview-tts
+  - name: create_image_from_description
+    config:
+      model: dall-e-3
+      api_key: ${OPENAI_API_KEY}
+      api_base: https://api.openai.com
+```
+
+## Tool Scopes
+
+Each tool requires specific scopes to be granted to the agent. Scopes control which tools can be accessed:
+
+```yaml
+scopes:
+  - tool:artifact:*  # All artifact tools
+  - tool:audio:tts   # Text-to-speech
+  - tool:image:*     # All image tools
+  - tool:web_search:execute
+```
+
+## Common Patterns
+
+### Using Tools in Sequence
+
+Tools can be chained together to accomplish complex tasks:
+
+```python
+# 1. Load data artifact
+result = await load_artifact(
+    filename="sales_data.csv",
+    version=0
+)
+
+# 2. Analyze with extract_content_from_artifact
+analysis = await extract_content_from_artifact(
+    filename="sales_data.csv",
+    extraction_goal="Summarize top 5 products by revenue",
+    version=0
+)
+
+# 3. Create visualization
+chart = await create_chart_from_plotly_config(
+    config_content=plotly_json,
+    config_format="json",
+    output_filename="sales_chart.png"
+)
+```
+
+### Error Handling
+
+All tools return a `ToolResult` object with status information:
+
+```python
+result = await some_tool(...)
+
+if result.status == "error":
+    # Handle error
+    error_message = result.message
+else:
+    # Process successful result
+    data = result.data
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Artifact Management" icon="box" href="/built-in-tools/artifact-management">
+    Learn how to manage files and data within agent sessions
+  </Card>
+  <Card title="Data Analysis" icon="chart-line" href="/built-in-tools/data-analysis">
+    Explore data analysis and visualization tools
+  </Card>
+  <Card title="Audio Tools" icon="microphone" href="/built-in-tools/audio-tools">
+    Generate and process audio content
+  </Card>
+  <Card title="Image Tools" icon="image" href="/built-in-tools/image-tools">
+    Create and manipulate images with AI
+  </Card>
+</CardGroup>

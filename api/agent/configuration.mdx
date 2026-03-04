@@ -1,0 +1,465 @@
+---
+title: 'Agent Configuration'
+description: 'Complete YAML configuration schema for Solace Agent Mesh agents'
+icon: 'gear'
+---
+
+## Overview
+
+Agents in Solace Agent Mesh are configured using YAML files that define their behavior, capabilities, and integration points. Each agent configuration controls everything from LLM models to tool integrations and session management.
+
+## Complete Configuration Schema
+
+### Top-Level App Configuration
+
+```yaml
+apps:
+  - name: my_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      # Core agent configuration below
+```
+
+### Core Agent Properties
+
+<ParamField path="namespace" type="string" required>
+  The A2A topic namespace (e.g., "myorg/dev"). Must be set via `${NAMESPACE}` environment variable.
+  
+  ```yaml
+  namespace: ${NAMESPACE}
+  ```
+</ParamField>
+
+<ParamField path="agent_name" type="string" required>
+  Unique identifier for the agent within the mesh. Used for agent discovery and routing.
+  
+  ```yaml
+  agent_name: "FileSystemAgent"
+  ```
+</ParamField>
+
+<ParamField path="display_name" type="string">
+  Human-readable name shown in UI components.
+  
+  ```yaml
+  display_name: "File System"
+  ```
+</ParamField>
+
+<ParamField path="supports_streaming" type="boolean" default="true">
+  Whether the agent supports streaming responses. Set to `false` for tool-only agents.
+  
+  ```yaml
+  supports_streaming: true
+  ```
+</ParamField>
+
+### Model Configuration
+
+<ParamField path="model" type="object" required>
+  Defines the LLM model to use for agent reasoning.
+  
+  ```yaml
+  model:
+    provider: "google"
+    model_name: "gemini-2.0-flash-exp"
+    temperature: 0.7
+    max_tokens: 8192
+  ```
+  
+  **Subfields:**
+  - `provider` (string, required): LLM provider ("google", "openai", "anthropic", etc.)
+  - `model_name` (string, required): Specific model identifier
+  - `temperature` (float): Sampling temperature (0.0-1.0)
+  - `max_tokens` (integer): Maximum output tokens
+</ParamField>
+
+### Instructions
+
+<ParamField path="instruction" type="string" required>
+  System prompt that defines the agent's behavior and capabilities.
+  
+  ```yaml
+  instruction: |
+    You are a file system assistant that can read and write files.
+    Help users manage their files efficiently.
+  ```
+</ParamField>
+
+## Tool Configuration
+
+### Tools Definition
+
+<ParamField path="tools" type="array">
+  List of tools available to the agent. Supports built-in tools, MCP servers, and custom tools.
+  
+  ```yaml
+  tools:
+    # MCP Tool
+    - tool_type: mcp
+      connection_params:
+        type: stdio
+        command: "./node_modules/.bin/mcp-server-filesystem"
+        args:
+          - "/tmp/samv2"
+        timeout: 300
+      environment_variables:
+        API_KEY: ${API_KEY}
+    
+    # Built-in Tool Group
+    - tool_type: builtin-group
+      group_name: "artifact_management"
+    
+    # Single Built-in Tool
+    - tool_type: builtin
+      tool_name: "create_artifact"
+  ```
+</ParamField>
+
+#### MCP Tool Configuration
+
+<ParamField path="tools[].tool_type" type="string">
+  Set to `"mcp"` for Model Context Protocol tools.
+</ParamField>
+
+<ParamField path="tools[].tool_name" type="string">
+  Optional: Specific tool name from the MCP server. If omitted, all tools from the server are loaded.
+</ParamField>
+
+<ParamField path="tools[].connection_params" type="object">
+  MCP server connection configuration:
+  
+  - `type` (string): Connection type (`"stdio"` or `"sse"`)
+  - `command` (string): Command to launch the MCP server (for stdio)
+  - `args` (array): Command arguments
+  - `timeout` (integer): Connection timeout in seconds
+  - `url` (string): Server URL (for SSE connections)
+</ParamField>
+
+<ParamField path="tools[].environment_variables" type="object">
+  Environment variables to pass to the MCP server process.
+  
+  ```yaml
+  environment_variables:
+    JIRA_URL: ${JIRA_URL}
+    JIRA_API_TOKEN: ${JIRA_API_TOKEN}
+  ```
+</ParamField>
+
+#### Built-in Tool Groups
+
+Available built-in tool groups:
+
+- **`artifact_management`**: Create, read, update, delete, and list artifacts
+- **`data_analysis`**: Analyze data from artifacts (CSV, JSON, etc.)
+
+## Service Configuration
+
+### Session Service
+
+<ParamField path="session_service" type="object" required>
+  Configures conversation history storage.
+  
+  ```yaml
+  session_service:
+    type: "memory"  # or "database"
+    default_behavior: "PERSISTENT"  # or "RUN_BASED"
+  ```
+  
+  **Types:**
+  - `memory`: In-memory storage (ephemeral)
+  - `database`: SQLite/PostgreSQL storage (persistent)
+  
+  **Behaviors:**
+  - `PERSISTENT`: Maintains conversation history across requests
+  - `RUN_BASED`: Each request is independent
+</ParamField>
+
+### Artifact Service
+
+<ParamField path="artifact_service" type="object" required>
+  Configures file/artifact storage backend.
+  
+  ```yaml
+  # Memory Storage
+  artifact_service:
+    type: "memory"
+  
+  # Filesystem Storage
+  artifact_service:
+    type: "filesystem"
+    base_path: "/tmp/samv2"
+    artifact_scope: "namespace"  # or "session", "agent"
+  
+  # S3 Storage
+  artifact_service:
+    type: "s3"
+    bucket_name: "my-artifacts-bucket"
+    endpoint_url: "https://s3.amazonaws.com"
+    region: "us-east-1"
+    artifact_scope: "namespace"
+  ```
+  
+  **Artifact Scopes:**
+  - `namespace`: Shared across all agents in the namespace
+  - `session`: Isolated per user session
+  - `agent`: Isolated per agent
+</ParamField>
+
+## Advanced Configuration
+
+### Artifact Handling
+
+<ParamField path="artifact_handling_mode" type="string" default="reference">
+  How artifacts are passed to the LLM:
+  
+  - `reference`: Only metadata passed (recommended)
+  - `inline`: Full content embedded in context
+  
+  ```yaml
+  artifact_handling_mode: "reference"
+  ```
+</ParamField>
+
+<ParamField path="enable_embed_resolution" type="boolean" default="true">
+  Enable dynamic embed resolution (e.g., `{{artifact:filename.txt}}`).
+  
+  ```yaml
+  enable_embed_resolution: true
+  ```
+</ParamField>
+
+<ParamField path="enable_artifact_content_instruction" type="boolean" default="true">
+  Include artifact content summaries in system instructions.
+  
+  ```yaml
+  enable_artifact_content_instruction: true
+  ```
+</ParamField>
+
+### Tool Output Management
+
+<ParamField path="tool_output_save_threshold_bytes" type="integer" default="4000">
+  Automatically save tool outputs larger than this size as artifacts.
+  
+  ```yaml
+  tool_output_save_threshold_bytes: 4000
+  ```
+</ParamField>
+
+<ParamField path="tool_output_llm_return_max_bytes" type="integer" default="30000">
+  Maximum tool output size to return to LLM. Larger outputs are truncated and saved as artifacts.
+  
+  ```yaml
+  tool_output_llm_return_max_bytes: 30000
+  ```
+</ParamField>
+
+### MCP Response Handling
+
+<ParamField path="mcp_tool_response_save_threshold_bytes" type="integer" default="2048">
+  Automatically save MCP responses larger than this size as artifacts.
+  
+  ```yaml
+  mcp_tool_response_save_threshold_bytes: 2048
+  ```
+</ParamField>
+
+<ParamField path="mcp_tool_llm_return_max_bytes" type="integer" default="4096">
+  Maximum MCP response size to return to LLM.
+  
+  ```yaml
+  mcp_tool_llm_return_max_bytes: 4096
+  ```
+</ParamField>
+
+### Binary Content Extraction
+
+<ParamField path="extract_content_from_artifact_config" type="object">
+  Configure LLM-powered extraction from binary files (images, PDFs).
+  
+  ```yaml
+  extract_content_from_artifact_config:
+    supported_binary_mime_types:
+      - "image/png"
+      - "image/jpeg"
+      - "application/pdf"
+    model: "gemini-1.5-pro-latest"
+  ```
+</ParamField>
+
+## Agent Card
+
+<ParamField path="agent_card" type="object">
+  Metadata for agent discovery and routing.
+  
+  ```yaml
+  agent_card:
+    description: "An agent that interacts with the local filesystem."
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text", "file"]
+    skills:
+      - name: "read_files"
+        description: "Read file contents"
+      - name: "write_files"
+        description: "Create or update files"
+  ```
+</ParamField>
+
+### Agent Card Publishing
+
+<ParamField path="agent_card_publishing" type="object">
+  Configure agent discovery broadcasting.
+  
+  ```yaml
+  agent_card_publishing:
+    interval_seconds: 10
+  ```
+</ParamField>
+
+### Agent Discovery
+
+<ParamField path="agent_discovery" type="object">
+  Enable discovery of peer agents in the mesh.
+  
+  ```yaml
+  agent_discovery:
+    enabled: true
+  ```
+</ParamField>
+
+## Inter-Agent Communication
+
+<ParamField path="inter_agent_communication" type="object">
+  Configure peer-to-peer agent communication.
+  
+  ```yaml
+  inter_agent_communication:
+    allow_list:
+      - "ResearchAgent"
+      - "AnalysisAgent"
+    request_timeout_seconds: 30
+  ```
+  
+  **Subfields:**
+  - `allow_list` (array): Agents this agent can call (empty = all allowed)
+  - `request_timeout_seconds` (integer): Timeout for peer requests
+</ParamField>
+
+## Auto-Summarization
+
+<ParamField path="auto_summarization" type="object">
+  Configure automatic context window management.
+  
+  ```yaml
+  auto_summarization:
+    enabled: true
+    compaction_percentage: 0.25  # Summarize oldest 25% of history
+  ```
+</ParamField>
+
+## Complete Example
+
+```yaml agent-config.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: agent.log
+
+apps:
+  - name: filesystem_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      broker_type: solace
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "FileSystemAgent"
+      display_name: "File System"
+      
+      model:
+        provider: "google"
+        model_name: "gemini-2.0-flash-exp"
+        temperature: 0.7
+      
+      instruction: |
+        You are a file system assistant. You can read and write files
+        using the filesystem MCP server tools.
+      
+      tools:
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "./node_modules/.bin/mcp-server-filesystem"
+            args:
+              - "/tmp/samv2"
+            timeout: 300
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+      
+      tool_output_save_threshold_bytes: 4000
+      tool_output_llm_return_max_bytes: 30000
+      
+      agent_card:
+        description: "An agent that interacts with the local filesystem."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - name: "file_operations"
+            description: "Read, write, and manage files"
+      
+      agent_card_publishing:
+        interval_seconds: 10
+      
+      agent_discovery:
+        enabled: true
+      
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30
+      
+      auto_summarization:
+        enabled: true
+        compaction_percentage: 0.25
+```
+
+## Environment Variables
+
+Required environment variables for agent configuration:
+
+- `NAMESPACE`: A2A topic namespace
+- `SOLACE_BROKER_URL`: Solace broker connection URL
+- `SOLACE_BROKER_USERNAME`: Broker username
+- `SOLACE_BROKER_PASSWORD`: Broker password
+- `SOLACE_BROKER_VPN`: Broker VPN name
+- `GOOGLE_API_KEY`: Google AI API key (if using Gemini models)
+- LLM-specific API keys as needed
+
+## See Also
+
+- [Agent Lifecycle](/api/agent/lifecycle) - Understand agent startup and shutdown
+- [Agent Callbacks](/api/agent/callbacks) - Customize agent behavior with callbacks
+- [Tool Development](/api/agent/tools) - Create custom tools for agents

@@ -1,0 +1,468 @@
+---
+title: 'Gateway Configuration'
+description: 'Configure Solace Agent Mesh gateways for external system integration'
+icon: 'gear'
+---
+
+## Overview
+
+Gateways connect external systems (REST APIs, WebSockets, Slack, etc.) to the Solace Agent Mesh. Each gateway type has specific configuration requirements.
+
+## Gateway Types
+
+Solace Agent Mesh supports multiple gateway types:
+
+- **REST Gateway**: HTTP/HTTPS REST API with SSE streaming
+- **WebUI Gateway**: Web-based user interface with real-time updates
+- **Slack Gateway**: Slack bot integration
+- **Generic Gateway**: Custom protocol adapters
+
+## Base Gateway Configuration
+
+All gateways share common base configuration:
+
+### Top-Level Configuration
+
+```yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: gateway.log
+
+apps:
+  - name: my_gateway_app
+    app_base_path: .
+    app_module: sam_rest_gateway.app  # Gateway-specific module
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      # Gateway configuration below
+```
+
+### Core Gateway Properties
+
+<ParamField path="namespace" type="string" required>
+  The A2A topic namespace. Must match agent namespace.
+  
+  ```yaml
+  namespace: ${NAMESPACE}
+  ```
+</ParamField>
+
+<ParamField path="gateway_id" type="string">
+  Unique identifier for this gateway instance. Auto-generated if omitted.
+  
+  ```yaml
+  gateway_id: ${REST_GATEWAY_ID}
+  ```
+</ParamField>
+
+### Artifact Service
+
+<ParamField path="artifact_service" type="object" required>
+  Storage backend for file uploads and downloads.
+  
+  ```yaml
+  artifact_service:
+    type: "filesystem"
+    base_path: "/tmp/samv2"
+    artifact_scope: "namespace"
+  ```
+  
+  **Scope Options:**
+  - `namespace`: Shared across all components in namespace
+  - `session`: Isolated per user session
+  - `gateway`: Isolated to this gateway
+</ParamField>
+
+## REST Gateway Configuration
+
+REST Gateway provides HTTP/HTTPS API access with Server-Sent Events (SSE) for streaming.
+
+### REST-Specific Configuration
+
+<ParamField path="rest_api_server_host" type="string" default="0.0.0.0">
+  Host address for the REST API server.
+  
+  ```yaml
+  rest_api_server_host: ${REST_API_HOST, 0.0.0.0}
+  ```
+</ParamField>
+
+<ParamField path="rest_api_server_port" type="integer" default="8080">
+  Port for HTTP REST API.
+  
+  ```yaml
+  rest_api_server_port: ${REST_API_PORT, 8080}
+  ```
+</ParamField>
+
+<ParamField path="rest_api_https_port" type="integer" default="1943">
+  Port for HTTPS REST API (when SSL is enabled).
+  
+  ```yaml
+  rest_api_https_port: ${REST_API_HTTPS_PORT, 1943}
+  ```
+</ParamField>
+
+### SSL/TLS Configuration
+
+<ParamField path="ssl_keyfile" type="string">
+  Path to SSL private key file.
+  
+  ```yaml
+  ssl_keyfile: ${SSL_KEYFILE}
+  ```
+</ParamField>
+
+<ParamField path="ssl_certfile" type="string">
+  Path to SSL certificate file.
+  
+  ```yaml
+  ssl_certfile: ${SSL_CERTFILE}
+  ```
+</ParamField>
+
+<ParamField path="ssl_keyfile_password" type="string">
+  Password for encrypted SSL private key.
+  
+  ```yaml
+  ssl_keyfile_password: ${SSL_KEYFILE_PASSWORD}
+  ```
+</ParamField>
+
+### Authentication
+
+<ParamField path="enforce_authentication" type="boolean" default="false">
+  Enable/disable authentication checks.
+  
+  ```yaml
+  enforce_authentication: false
+  ```
+</ParamField>
+
+<ParamField path="external_auth_service_url" type="string">
+  URL of external OAuth2/OIDC authentication service.
+  
+  ```yaml
+  external_auth_service_url: ${EXTERNAL_AUTH_SERVICE_URL, http://localhost:8080}
+  ```
+</ParamField>
+
+<ParamField path="default_user_identity" type="string" default="sam_dev_user">
+  Default user identity when authentication is disabled (development mode).
+  
+  ```yaml
+  default_user_identity: "sam_dev_user"
+  ```
+</ParamField>
+
+### Legacy API Support
+
+<ParamField path="sync_mode_timeout_seconds" type="integer" default="300">
+  Timeout for synchronous (v1) API requests.
+  
+  ```yaml
+  sync_mode_timeout_seconds: 300
+  ```
+</ParamField>
+
+### Complete REST Gateway Example
+
+```yaml rest-gateway.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: rest_gateway.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: rest_gateway_app
+    app_base_path: .
+    app_module: sam_rest_gateway.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      gateway_id: ${REST_GATEWAY_ID}
+      
+      # Artifact storage
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      # REST API settings
+      rest_api_server_host: ${REST_API_HOST, 0.0.0.0}
+      rest_api_server_port: ${REST_API_PORT, 8080}
+      rest_api_https_port: ${REST_API_HTTPS_PORT, 1943}
+      
+      # SSL configuration
+      ssl_keyfile: ${SSL_KEYFILE}
+      ssl_certfile: ${SSL_CERTFILE}
+      ssl_keyfile_password: ${SSL_KEYFILE_PASSWORD}
+      
+      # Authentication
+      enforce_authentication: false
+      external_auth_service_url: ${EXTERNAL_AUTH_SERVICE_URL, http://localhost:8080}
+      default_user_identity: "sam_dev_user"
+      
+      # Legacy API support
+      sync_mode_timeout_seconds: 300
+```
+
+## WebUI Gateway Configuration
+
+WebUI Gateway provides a web-based interface with real-time streaming updates.
+
+### WebUI-Specific Configuration
+
+<ParamField path="session_secret_key" type="string" required>
+  Secret key for signing web user sessions.
+  
+  ```yaml
+  session_secret_key: ${SESSION_SECRET_KEY}
+  ```
+</ParamField>
+
+<ParamField path="fastapi_host" type="string" default="127.0.0.1">
+  Host address for the FastAPI server.
+  
+  ```yaml
+  fastapi_host: ${FASTAPI_HOST, 127.0.0.1}
+  ```
+</ParamField>
+
+<ParamField path="fastapi_port" type="integer" default="8000">
+  Port for HTTP FastAPI server.
+  
+  ```yaml
+  fastapi_port: ${FASTAPI_PORT, 8000}
+  ```
+</ParamField>
+
+<ParamField path="fastapi_https_port" type="integer" default="8443">
+  Port for HTTPS FastAPI server (when SSL enabled).
+  
+  ```yaml
+  fastapi_https_port: ${FASTAPI_HTTPS_PORT, 8443}
+  ```
+</ParamField>
+
+### CORS Configuration
+
+<ParamField path="cors_allowed_origins" type="array" default='["*"]'>
+  List of allowed origins for CORS requests.
+  
+  ```yaml
+  cors_allowed_origins:
+    - "http://localhost:3000"
+    - "https://app.example.com"
+  ```
+</ParamField>
+
+### SSE Configuration
+
+<ParamField path="sse_max_queue_size" type="integer" default="200">
+  Maximum size of SSE connection queues.
+  
+  ```yaml
+  sse_max_queue_size: 200
+  ```
+</ParamField>
+
+<ParamField path="resolve_artifact_uris_in_gateway" type="boolean" default="true">
+  If true, gateway resolves artifact:// URIs before sending to client.
+  
+  ```yaml
+  resolve_artifact_uris_in_gateway: true
+  ```
+</ParamField>
+
+### Frontend Configuration
+
+<ParamField path="frontend_welcome_message" type="string" default="Hi! How can I help?">
+  Initial welcome message displayed in chat.
+  
+  ```yaml
+  frontend_welcome_message: "Welcome! Ask me anything."
+  ```
+</ParamField>
+
+<ParamField path="frontend_bot_name" type="string" default="A2A Agent">
+  Name displayed for the bot/agent in UI.
+  
+  ```yaml
+  frontend_bot_name: "Assistant"
+  ```
+</ParamField>
+
+<ParamField path="frontend_collect_feedback" type="boolean" default="false">
+  Enable/disable feedback buttons in UI.
+  
+  ```yaml
+  frontend_collect_feedback: true
+  ```
+</ParamField>
+
+<ParamField path="frontend_server_url" type="string" default="">
+  Public URL for frontend API requests. Empty uses relative URLs.
+  
+  ```yaml
+  frontend_server_url: "https://webui-gateway.example.com"
+  ```
+</ParamField>
+
+### Session & Task Configuration
+
+<ParamField path="session_service" type="object">
+  Session persistence configuration.
+  
+  ```yaml
+  session_service:
+    type: "database"
+    database_url: ${DATABASE_URL}
+  ```
+</ParamField>
+
+<ParamField path="visualization_queue_size" type="integer" default="600">
+  Maximum size of visualization message queue.
+  
+  ```yaml
+  visualization_queue_size: 600
+  ```
+</ParamField>
+
+<ParamField path="task_logger_queue_size" type="integer" default="600">
+  Maximum size of task logger queue.
+  
+  ```yaml
+  task_logger_queue_size: 600
+  ```
+</ParamField>
+
+### Complete WebUI Gateway Example
+
+```yaml webui-gateway.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: webui_gateway.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: webui_gateway_app
+    app_base_path: .
+    app_module: solace_agent_mesh.gateway.http_sse.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      gateway_id: ${WEBUI_GATEWAY_ID}
+      
+      # Session security
+      session_secret_key: ${SESSION_SECRET_KEY}
+      
+      # Server configuration
+      fastapi_host: ${FASTAPI_HOST, 127.0.0.1}
+      fastapi_port: ${FASTAPI_PORT, 8000}
+      fastapi_https_port: ${FASTAPI_HTTPS_PORT, 8443}
+      
+      # CORS
+      cors_allowed_origins:
+        - "http://localhost:3000"
+        - "https://app.example.com"
+      
+      # SSE configuration
+      sse_max_queue_size: 200
+      resolve_artifact_uris_in_gateway: true
+      
+      # Frontend customization
+      frontend_welcome_message: "Hello! How can I assist you today?"
+      frontend_bot_name: "AI Assistant"
+      frontend_collect_feedback: true
+      frontend_server_url: "https://webui.example.com"
+      
+      # Authentication
+      frontend_use_authorization: true
+      external_auth_service_url: ${EXTERNAL_AUTH_SERVICE_URL}
+      external_auth_callback_uri: ${EXTERNAL_AUTH_CALLBACK_URI}
+      external_auth_provider: "azure"
+      
+      # SSL
+      ssl_keyfile: ${SSL_KEYFILE}
+      ssl_certfile: ${SSL_CERTFILE}
+      ssl_keyfile_password: ${SSL_KEYFILE_PASSWORD}
+      
+      # Session persistence
+      session_service:
+        type: "database"
+        database_url: ${DATABASE_URL}
+      
+      # Artifact storage
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+```
+
+## Generic Gateway Configuration
+
+For custom protocol adapters:
+
+```yaml
+apps:
+  - name: custom_gateway_app
+    app_base_path: .
+    app_module: solace_agent_mesh.gateway.generic.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      gateway_id: ${CUSTOM_GATEWAY_ID}
+      
+      # Custom adapter configuration
+      adapter_module: "my_custom_adapter"
+      adapter_config:
+        protocol: "mqtt"
+        broker_url: ${MQTT_BROKER_URL}
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+```
+
+## Environment Variables
+
+Required environment variables:
+
+- `NAMESPACE`: A2A topic namespace
+- `SOLACE_BROKER_URL`: Solace broker URL
+- `SOLACE_BROKER_USERNAME`: Broker username
+- `SOLACE_BROKER_PASSWORD`: Broker password
+- `SOLACE_BROKER_VPN`: Broker VPN name
+
+Gateway-specific:
+
+- `REST_GATEWAY_ID`: REST gateway identifier
+- `REST_API_HOST`: REST API host
+- `REST_API_PORT`: REST API port
+- `SESSION_SECRET_KEY`: WebUI session secret
+- `DATABASE_URL`: Database connection string
+- SSL certificate paths as needed
+
+## See Also
+
+- [REST API Reference](/api/gateway/rest-api) - REST API endpoints
+- [WebSocket Reference](/api/gateway/websocket) - WebSocket protocol
+- [Agent Configuration](/api/agent/configuration) - Configure agents

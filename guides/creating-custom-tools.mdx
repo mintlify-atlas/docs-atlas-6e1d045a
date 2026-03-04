@@ -1,0 +1,548 @@
+---
+title: Creating Custom Tools
+description: Build custom Python tools to extend agent capabilities in Solace Agent Mesh
+---
+
+# Creating Custom Tools
+
+This guide shows you how to create custom tools that extend your agents' capabilities. Tools are functions that agents can call to perform specific actions like API calls, data processing, or system interactions.
+
+## Understanding Tools
+
+In Solace Agent Mesh, tools are:
+- Python functions that agents can invoke
+- Automatically discovered and made available to LLMs
+- Described by docstrings and type hints for the LLM to understand
+- Provided with context about the agent's session and artifacts
+
+## Tool Types
+
+Solace Agent Mesh supports three types of tools:
+
+1. **Built-in Tools**: Pre-packaged tools like artifact management, data analysis
+2. **Python Tools**: Custom Python functions you write
+3. **Dynamic Tools**: Advanced tools with custom behavior and initialization
+
+## Creating a Simple Python Tool
+
+<Steps>
+
+### Step 1: Write the Tool Function
+
+Create a Python file with your tool function. The function signature and docstring are crucial:
+
+```python tools.py
+def calculate_square(number: float) -> float:
+    """Calculates the square of the input number.
+    
+    Args:
+        number: The number to square
+    
+    Returns:
+        The square of the input number
+    """
+    return number * number
+```
+
+<Note>
+The docstring is used by the LLM to understand when and how to use the tool. Be clear and specific.
+</Note>
+
+### Step 2: Add Tool to Agent Configuration
+
+Reference your tool in the agent's YAML configuration:
+
+```yaml agent.yaml
+tools:
+  - tool_type: python
+    component_module: "my_tools"  # Python module path
+    function_name: "calculate_square"
+```
+
+### Step 3: Test the Tool
+
+Start your agent and ask it to use the tool:
+
+```bash
+sam run configs/agents/my_agent.yaml
+```
+
+Then via a gateway: "Calculate the square of 25"
+
+</Steps>
+
+## Working with ToolContext
+
+The `ToolContext` provides access to agent services like artifact management and session data:
+
+```python
+from google.adk.tools import ToolContext
+from google.genai import types as adk_types
+import base64
+
+def create_file(
+    filename: str,
+    mimeType: str,
+    content: str,
+    return_immediately: bool,
+    tool_context: ToolContext = None,
+) -> dict:
+    """
+    Creates a file using the artifact service.
+    
+    Args:
+        filename: The name of the file to create
+        mimeType: The MIME type of the file content (e.g., 'text/plain', 'image/png')
+        content: The content of the file, potentially base64 encoded if binary
+        return_immediately: If True, return this artifact to the user immediately
+        tool_context: The context provided by the ADK framework
+    
+    Returns:
+        A dictionary confirming the file creation and its version
+    """
+    if not tool_context:
+        return {
+            "status": "error",
+            "filename": filename,
+            "message": "ToolContext is missing.",
+        }
+    
+    try:
+        # Decode content if binary
+        file_bytes: bytes
+        is_binary = (
+            mimeType
+            and not mimeType.startswith("text/")
+            and mimeType not in ["application/json", "application/yaml"]
+        )
+        
+        if is_binary:
+            file_bytes = base64.b64decode(content, validate=True)
+        else:
+            file_bytes = content.encode("utf-8")
+        
+        # Create artifact part
+        artifact_part = adk_types.Part.from_bytes(
+            data=file_bytes,
+            mime_type=mimeType
+        )
+        
+        # Save to artifact service
+        version = tool_context.save_artifact(
+            filename=filename,
+            artifact=artifact_part
+        )
+        
+        return {
+            "status": "success",
+            "filename": filename,
+            "version": version,
+            "mimeType": mimeType,
+            "message": f"File '{filename}' (version {version}) saved successfully.",
+        }
+    
+    except Exception as e:
+        return {
+            "status": "error",
+            "filename": filename,
+            "message": f"Failed to create file: {e}",
+        }
+```
+
+<Tip>
+Always check if `tool_context` is None before using it, and return helpful error messages.
+</Tip>
+
+## Creating Dynamic Tools
+
+Dynamic tools allow for advanced features like initialization, cleanup, and custom parameter handling:
+
+```python dynamic_tools.py
+from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
+from google.adk.tools import ToolContext
+from pydantic import BaseModel, Field
+from typing import Optional
+import httpx
+
+class ApiToolConfig(BaseModel):
+    """Configuration for the API tool."""
+    api_key: str = Field(description="API key for authentication")
+    base_url: str = Field(description="Base URL for the API")
+    timeout: int = Field(default=30, description="Request timeout in seconds")
+
+class ApiSearchTool(DynamicTool):
+    """Tool for searching an external API."""
+    
+    config_model = ApiToolConfig
+    
+    def __init__(self, tool_config: Optional[ApiToolConfig] = None):
+        super().__init__(tool_config)
+        self.client = None
+    
+    async def init(self, component, tool_config: ApiToolConfig) -> None:
+        """Initialize the HTTP client."""
+        self.client = httpx.AsyncClient(
+            base_url=tool_config.base_url,
+            timeout=tool_config.timeout,
+            headers={"Authorization": f"Bearer {tool_config.api_key}"}
+        )
+    
+    async def cleanup(self, component, tool_config: ApiToolConfig) -> None:
+        """Clean up the HTTP client."""
+        if self.client:
+            await self.client.aclose()
+    
+    @property
+    def tool_name(self) -> str:
+        return "search_api"
+    
+    @property
+    def tool_description(self) -> str:
+        return "Search the external API for information."
+    
+    @property
+    def tool_parameters_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results",
+                    "default": 10
+                }
+            },
+            "required": ["query"]
+        }
+    
+    async def execute(
+        self,
+        query: str,
+        limit: int = 10,
+        tool_context: ToolContext = None
+    ) -> dict:
+        """Execute the API search."""
+        if not self.client:
+            return {"error": "Tool not initialized"}
+        
+        try:
+            response = await self.client.get(
+                "/search",
+                params={"q": query, "limit": limit}
+            )
+            response.raise_for_status()
+            
+            return {
+                "status": "success",
+                "results": response.json(),
+                "count": len(response.json())
+            }
+        
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Search failed: {str(e)}"
+            }
+```
+
+Add to agent configuration:
+
+```yaml
+tools:
+  - tool_type: dynamic
+    tool_class: "my_tools.dynamic_tools.ApiSearchTool"
+    config:
+      api_key: "${API_KEY}"
+      base_url: "https://api.example.com"
+      timeout: 60
+```
+
+## Tool Result Best Practices
+
+### Return Structured Data
+
+Return dictionaries with clear status indicators:
+
+```python
+def my_tool(param: str) -> dict:
+    """My custom tool."""
+    try:
+        result = process(param)
+        return {
+            "status": "success",
+            "data": result,
+            "message": "Processing completed"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+```
+
+### Handle Large Outputs
+
+For large results, save as artifacts:
+
+```python
+def generate_report(
+    report_type: str,
+    tool_context: ToolContext = None
+) -> dict:
+    """Generate a detailed report."""
+    if not tool_context:
+        return {"error": "ToolContext required"}
+    
+    # Generate large report
+    report_data = create_large_report(report_type)
+    
+    # Save as artifact
+    artifact_part = adk_types.Part.from_text(
+        data=report_data,
+        mime_type="text/plain"
+    )
+    
+    version = tool_context.save_artifact(
+        filename=f"report_{report_type}.txt",
+        artifact=artifact_part
+    )
+    
+    return {
+        "status": "success",
+        "artifact": f"report_{report_type}.txt",
+        "version": version,
+        "summary": "Report generated with 1,234 entries"
+    }
+```
+
+## Complete Example: Database Query Tool
+
+Here's a complete example of a tool that queries a database:
+
+```python database_tools.py
+from typing import Optional, List, Dict, Any
+from google.adk.tools import ToolContext
+from google.genai import types as adk_types
+import sqlite3
+import json
+import pandas as pd
+
+def execute_sql_query(
+    query: str,
+    tool_context: ToolContext = None
+) -> dict:
+    """
+    Execute a SQL query against the database.
+    
+    This tool connects to the configured SQLite database and executes
+    the provided SQL query. For large result sets (>100 rows), the
+    results are saved as a CSV artifact.
+    
+    Args:
+        query: The SQL query to execute
+        tool_context: The ADK tool context
+    
+    Returns:
+        Dictionary with query results or error message
+    """
+    if not tool_context:
+        return {
+            "status": "error",
+            "message": "ToolContext is required for this tool"
+        }
+    
+    # Get database path from component config
+    inv_context = tool_context._invocation_context
+    component = getattr(inv_context, 'component', None)
+    
+    if not component or not hasattr(component, 'db_connection'):
+        return {
+            "status": "error",
+            "message": "Database not initialized"
+        }
+    
+    try:
+        # Execute query
+        conn = component.db_connection
+        df = pd.read_sql_query(query, conn)
+        
+        row_count = len(df)
+        
+        # For small results, return directly
+        if row_count <= 100:
+            return {
+                "status": "success",
+                "row_count": row_count,
+                "columns": df.columns.tolist(),
+                "data": df.to_dict(orient='records')
+            }
+        
+        # For large results, save as artifact
+        csv_content = df.to_csv(index=False)
+        artifact_part = adk_types.Part.from_text(
+            data=csv_content,
+            mime_type="text/csv"
+        )
+        
+        filename = "query_results.csv"
+        version = tool_context.save_artifact(
+            filename=filename,
+            artifact=artifact_part
+        )
+        
+        return {
+            "status": "success",
+            "row_count": row_count,
+            "columns": df.columns.tolist(),
+            "artifact": filename,
+            "version": version,
+            "message": f"Query returned {row_count} rows. Results saved to {filename}",
+            "preview": df.head(5).to_dict(orient='records')
+        }
+    
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Query failed: {str(e)}",
+            "query": query
+        }
+```
+
+Configuration:
+
+```yaml
+tools:
+  - tool_type: python
+    component_module: "database_tools"
+    function_name: "execute_sql_query"
+```
+
+## Testing Your Tools
+
+<Steps>
+
+### Write Unit Tests
+
+Create tests for your tools:
+
+```python test_tools.py
+import pytest
+from my_tools import calculate_square
+
+def test_calculate_square():
+    assert calculate_square(5) == 25
+    assert calculate_square(0) == 0
+    assert calculate_square(-3) == 9
+
+def test_calculate_square_float():
+    assert calculate_square(2.5) == 6.25
+```
+
+### Test with Mock Context
+
+Test tools that use ToolContext:
+
+```python
+from unittest.mock import Mock, MagicMock
+from my_tools import create_file
+
+def test_create_file_success():
+    # Mock ToolContext
+    mock_context = Mock()
+    mock_context.save_artifact = MagicMock(return_value="v1")
+    
+    result = create_file(
+        filename="test.txt",
+        mimeType="text/plain",
+        content="Hello, world!",
+        return_immediately=False,
+        tool_context=mock_context
+    )
+    
+    assert result["status"] == "success"
+    assert result["filename"] == "test.txt"
+    assert result["version"] == "v1"
+    mock_context.save_artifact.assert_called_once()
+```
+
+### Integration Testing
+
+Test tools within a running agent:
+
+```bash
+# Start your agent
+sam run configs/agents/test_agent.yaml
+
+# Use a gateway to test
+curl -X POST http://localhost:8080/api/v1/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "TestAgent", "message": "Use the database tool to query customers"}'
+```
+
+</Steps>
+
+## Troubleshooting
+
+<Warning>
+**Common Issues:**
+
+1. **Tool not found**: Check module path in `component_module` matches your file structure
+2. **Import errors**: Ensure all dependencies are installed in your Python environment
+3. **ToolContext is None**: Verify the agent configuration includes necessary services
+4. **Type errors**: Use proper type hints; the LLM uses them to understand parameters
+</Warning>
+
+### Debug Tool Execution
+
+Add logging to your tools:
+
+```python
+import logging
+
+log = logging.getLogger(__name__)
+
+def my_tool(param: str) -> dict:
+    """My tool with logging."""
+    log.info(f"Tool called with param: {param}")
+    
+    try:
+        result = process(param)
+        log.debug(f"Tool result: {result}")
+        return {"status": "success", "data": result}
+    except Exception as e:
+        log.error(f"Tool error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+```
+
+## Best Practices
+
+<Tip>
+**Tool Development Tips:**
+
+1. **Clear Documentation**: Write detailed docstrings explaining purpose, parameters, and return values
+2. **Type Hints**: Always use type hints for parameters and return values
+3. **Error Handling**: Catch exceptions and return helpful error messages
+4. **Validation**: Validate inputs before processing
+5. **Idempotency**: Design tools to be safely retried if needed
+6. **Performance**: For slow operations, provide progress updates or async execution
+7. **Security**: Never trust user input; sanitize and validate all parameters
+8. **Artifact Usage**: Save large outputs as artifacts rather than returning inline
+</Tip>
+
+## Next Steps
+
+- [Creating Custom Agents](/guides/creating-custom-agents) - Build agents that use your tools
+- [MCP Integration](/guides/mcp-integration) - Integrate external tool servers
+- [Building Gateways](/guides/building-gateways) - Create custom interfaces
+- [SQL Database Integration](/guides/sql-database-integration) - Connect to databases
+
+## Real-World Examples
+
+Explore these tool examples in the source code:
+
+- `examples/sample_tools.py` - Simple tool examples
+- `src/solace_agent_mesh/agent/tools/builtin_artifact_tools.py` - Artifact management tools
+- `src/solace_agent_mesh/agent/tools/builtin_data_analysis_tools.py` - Data analysis tools

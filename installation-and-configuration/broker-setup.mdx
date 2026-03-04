@@ -1,0 +1,438 @@
+---
+title: Broker Setup
+description: Configure and connect to a Solace PubSub+ broker for event-driven agent communication
+---
+
+## Broker Options
+
+Solace Agent Mesh supports three broker deployment options:
+
+1. **Existing Solace Broker**: Connect to a running Solace PubSub+ broker (cloud or on-premises)
+2. **Local Container Broker**: Launch a new broker in a Docker or Podman container
+3. **Dev Mode**: Run without an external broker for local development (not for production)
+
+## Option 1: Using an Existing Solace Broker
+
+If you already have a Solace PubSub+ broker running (Standard or Enterprise Edition), you can connect to it directly.
+
+### Prerequisites
+
+- Running Solace PubSub+ broker (version 9.0+)
+- Broker connection details:
+  - WebSocket URL (e.g., `ws://broker-host:8008` or `wss://broker-host:443`)
+  - Message VPN name
+  - Username and password with appropriate permissions
+
+### Configuration
+
+<Steps>
+  <Step title="During Initialization">
+    When running `sam init`, choose option **1** for broker type:
+
+    ```
+    Which broker type do you want to use?
+      1) Existing Solace Pub/Sub+ broker
+      2) New local Solace broker container (requires Podman or Docker)
+      3) Run in 'dev mode' (all-in-one process, not for production)
+    Enter the number of your choice: 1
+    ```
+  </Step>
+
+  <Step title="Provide Connection Details">
+    Enter your broker connection information:
+
+    ```bash
+    Enter Solace broker URL endpoint: ws://your-broker-host:8008
+    Enter Solace broker VPN name: your-vpn-name
+    Enter Solace broker username: your-username
+    Enter Solace broker password: ********
+    ```
+  </Step>
+
+  <Step title="Verify Configuration">
+    After initialization, verify your `.env` file contains:
+
+    ```bash
+    SOLACE_BROKER_URL="ws://your-broker-host:8008"
+    SOLACE_BROKER_VPN="your-vpn-name"
+    SOLACE_BROKER_USERNAME="your-username"
+    SOLACE_BROKER_PASSWORD="your-password"
+    SOLACE_DEV_MODE="false"
+    ```
+  </Step>
+</Steps>
+
+### Broker Permissions
+
+Your broker user needs the following permissions:
+
+- **Subscribe** to topics under your namespace
+- **Publish** to topics under your namespace
+- **Create** temporary queues (if using `temporary_queue: true`)
+- **Bind** to queues
+
+<Note>
+  For production deployments, create a dedicated service account with minimal required permissions.
+</Note>
+
+### Using Solace Cloud
+
+For Solace Cloud (PaaS):
+
+<Steps>
+  <Step title="Get Connection Details">
+    From your Solace Cloud console:
+    1. Navigate to your service
+    2. Click "Connect" tab
+    3. Find WebSocket connection details
+  </Step>
+
+  <Step title="Use Secure WebSocket">
+    Use the secure WebSocket URL:
+
+    ```bash
+    SOLACE_BROKER_URL="wss://your-service.messaging.solace.cloud:443"
+    ```
+  </Step>
+
+  <Step title="Configure Credentials">
+    Use the credentials from your Solace Cloud service:
+
+    ```bash
+    SOLACE_BROKER_VPN="your-vpn-name"
+    SOLACE_BROKER_USERNAME="solace-cloud-client"
+    SOLACE_BROKER_PASSWORD="your-api-token"
+    ```
+  </Step>
+</Steps>
+
+## Option 2: Local Container Broker
+
+Launch a new Solace PubSub+ Standard broker in a container for local development.
+
+### Prerequisites
+
+- **Docker** or **Podman** installed and running
+- Ports available: 8080, 8008, 55555 (55554 on macOS)
+
+### Setup Process
+
+<Steps>
+  <Step title="Verify Container Engine">
+    Ensure Docker or Podman is installed:
+
+    <CodeGroup>
+      ```bash Docker
+      docker --version
+      ```
+
+      ```bash Podman
+      podman --version
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize with Container Option">
+    Choose option **2** during initialization:
+
+    ```bash
+    sam init
+    # Select: 2) New local Solace broker container
+    ```
+
+    Or use CLI option:
+
+    ```bash
+    sam init --broker-type container --container-engine docker
+    ```
+  </Step>
+
+  <Step title="Container Deployment">
+    The init process will automatically run:
+
+    <CodeGroup>
+      ```bash Docker Command
+      docker run -d --rm \
+        -p 8080:8080 \
+        -p 8008:8008 \
+        -p 55555:55555 \
+        -u 1004 \
+        --shm-size=2g \
+        --env username_admin_globalaccesslevel=admin \
+        --env username_admin_password=admin \
+        --name=solace-broker \
+        solace/solace-pubsub-standard
+      ```
+
+      ```bash Podman Command
+      podman run -d --rm \
+        -p 8080:8080 \
+        -p 8008:8008 \
+        -p 55555:55555 \
+        -u 1004 \
+        --shm-size=2g \
+        --env username_admin_globalaccesslevel=admin \
+        --env username_admin_password=admin \
+        --name=solace-broker \
+        solace/solace-pubsub-standard
+      ```
+    </CodeGroup>
+
+    <Note>
+      On macOS, port 55554 is used instead of 55555 due to system port restrictions.
+    </Note>
+  </Step>
+
+  <Step title="Default Connection Settings">
+    The local broker uses these default credentials:
+
+    ```bash
+    SOLACE_BROKER_URL="ws://localhost:8008"
+    SOLACE_BROKER_VPN="default"
+    SOLACE_BROKER_USERNAME="default"
+    SOLACE_BROKER_PASSWORD="default"
+    ```
+  </Step>
+</Steps>
+
+### Managing the Container
+
+<CodeGroup>
+  ```bash Check Status
+  docker ps | grep solace-broker
+  # or
+  podman ps | grep solace-broker
+  ```
+
+  ```bash View Logs
+  docker logs solace-broker
+  # or
+  podman logs solace-broker
+  ```
+
+  ```bash Stop Broker
+  docker stop solace-broker
+  # or
+  podman stop solace-broker
+  ```
+
+  ```bash Restart Broker
+  docker start solace-broker
+  # or
+  podman start solace-broker
+  ```
+</CodeGroup>
+
+### Accessing Broker Management
+
+The containerized broker includes PubSub+ Manager:
+
+1. Open http://localhost:8080 in your browser
+2. Login with:
+   - **Username**: `admin`
+   - **Password**: `admin`
+3. Select the `default` message VPN
+
+<Warning>
+  The container broker uses default credentials. For production use, always deploy with secure credentials.
+</Warning>
+
+## Option 3: Dev Mode
+
+Dev mode runs all components in a single process without requiring an external broker. **Use only for local development.**
+
+### When to Use Dev Mode
+
+- Local development and testing
+- Learning Solace Agent Mesh
+- Rapid prototyping
+- CI/CD testing environments
+
+<Warning>
+  Dev mode is **NOT suitable for production**. It lacks:
+  - Scalability across multiple processes
+  - Reliability and fault tolerance
+  - Distributed deployment capabilities
+</Warning>
+
+### Configuration
+
+<Steps>
+  <Step title="Enable Dev Mode">
+    Choose option **3** during initialization:
+
+    ```bash
+    sam init
+    # Select: 3) Run in 'dev mode'
+    ```
+
+    Or use the dev mode flag:
+
+    ```bash
+    sam init --dev-mode
+    ```
+  </Step>
+
+  <Step title="Dev Mode Settings">
+    In dev mode, the `.env` file will contain:
+
+    ```bash
+    SOLACE_DEV_MODE="true"
+    SOLACE_BROKER_URL="INTERNAL_DEV_BROKER"
+    SOLACE_BROKER_VPN="dev_vpn"
+    SOLACE_BROKER_USERNAME="dev_user"
+    SOLACE_BROKER_PASSWORD="dev_pass"
+    ```
+  </Step>
+
+  <Step title="Running in Dev Mode">
+    Start your agent mesh normally:
+
+    ```bash
+    sam run
+    ```
+
+    All components run in the same process with in-memory message routing.
+  </Step>
+</Steps>
+
+## Broker Configuration Reference
+
+The broker connection is configured in `shared_config.yaml`:
+
+```yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+```
+
+### Configuration Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `dev_mode` | Enable internal dev broker | `false` |
+| `broker_url` | WebSocket URL (ws:// or wss://) | `ws://localhost:8008` |
+| `broker_username` | Connection username | `default` |
+| `broker_password` | Connection password | `default` |
+| `broker_vpn` | Message VPN name | `default` |
+| `temporary_queue` | Use temporary queues for responses | `true` |
+
+## Troubleshooting
+
+### Connection Failures
+
+If agents can't connect to the broker:
+
+<Steps>
+  <Step title="Verify Broker is Running">
+    <CodeGroup>
+      ```bash Local Container
+      docker ps | grep solace-broker
+      ```
+
+      ```bash Remote Broker
+      telnet broker-host 8008
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Check Credentials">
+    Verify `.env` settings match your broker configuration:
+
+    ```bash
+    cat .env | grep SOLACE_
+    ```
+  </Step>
+
+  <Step title="Test Connection">
+    Check agent logs for connection errors:
+
+    ```bash
+    sam run
+    # Look for "Connected to broker" or connection errors
+    ```
+  </Step>
+</Steps>
+
+### Port Conflicts
+
+If port 8008 is already in use:
+
+```bash
+# Find what's using the port
+lsof -i :8008
+
+# Stop the conflicting service or use a different port
+docker run ... -p 9008:8008 ... solace/solace-pubsub-standard
+
+# Update your .env
+SOLACE_BROKER_URL="ws://localhost:9008"
+```
+
+### Container Won't Start
+
+<CodeGroup>
+  ```bash Check Logs
+  docker logs solace-broker
+  ```
+
+  ```bash Insufficient Memory
+  # Increase shared memory
+  docker run ... --shm-size=4g ... solace/solace-pubsub-standard
+  ```
+
+  ```bash Remove Old Container
+  docker rm -f solace-broker
+  # Then re-run initialization
+  ```
+</CodeGroup>
+
+### Authentication Errors
+
+If you see "401 Unauthorized" or "Authentication failure":
+
+1. Verify credentials in `.env`
+2. Check user exists in broker with correct permissions
+3. For Solace Cloud, ensure API token is valid
+4. Verify Message VPN name is correct
+
+## Advanced Broker Configuration
+
+### High Availability Setup
+
+For production deployments with HA:
+
+```bash
+# Use HA broker URLs
+SOLACE_BROKER_URL="wss://primary.example.com:443,wss://backup.example.com:443"
+```
+
+### Compression
+
+Enable message compression for bandwidth optimization:
+
+```yaml
+# In shared_config.yaml
+broker_connection: &broker_connection
+  # ... other settings ...
+  compression_level: 9  # 0-9, where 9 is maximum compression
+```
+
+### Custom Queue Names
+
+Disable temporary queues for persistent queue usage:
+
+```bash
+USE_TEMPORARY_QUEUES="false"
+```
+
+## Next Steps
+
+- [Configure environment variables](/installation-and-configuration/environment-variables)
+- [Run your first agent](/quickstart)
+- [Add custom agents](/tutorials/weather-agent)

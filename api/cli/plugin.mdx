@@ -1,0 +1,429 @@
+---
+title: 'sam plugin'
+description: 'Manage SAM plugins: create, install, add components, and build'
+---
+
+## Overview
+
+The `sam plugin` command manages Solace Agent Mesh plugins, allowing you to create new plugins, install existing ones, add plugin-based components to your project, build plugins for distribution, and browse the plugin catalog.
+
+## Syntax
+
+```bash
+sam plugin <SUBCOMMAND> [OPTIONS]
+```
+
+## Description
+
+Plugins extend SAM functionality by packaging reusable agents, gateways, tools, or custom components. The plugin system supports:
+
+- Creating new plugins from templates
+- Installing plugins from various sources (local, Git, PyPI)
+- Adding plugin components to your project
+- Building plugins as distributable packages
+- Browsing the official plugin catalog
+
+## Subcommands
+
+### sam plugin create
+
+Creates a new SAM plugin directory structure with interactive prompts for metadata.
+
+#### Syntax
+
+```bash
+sam plugin create <PLUGIN_NAME> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="PLUGIN_NAME" type="string" required>
+  Name of the plugin to create (e.g., `my-custom-plugin`).
+</ParamField>
+
+#### Options
+
+<ParamField path="--type" type="choice">
+  Plugin type. Options: `agent`, `gateway`, `tool`, `custom`
+</ParamField>
+
+<ParamField path="--author-name" type="string">
+  Author's name for the plugin metadata.
+</ParamField>
+
+<ParamField path="--author-email" type="string">
+  Author's email for the plugin metadata.
+</ParamField>
+
+<ParamField path="--description" type="string">
+  Plugin description.
+</ParamField>
+
+<ParamField path="--version" type="string" default="0.1.0">
+  Initial plugin version.
+</ParamField>
+
+<ParamField path="--skip" type="boolean" default="false">
+  Skip interactive prompts and use defaults or provided flags.
+</ParamField>
+
+#### Examples
+
+**Interactive plugin creation:**
+
+```bash
+sam plugin create my-analytics-plugin
+```
+
+**Non-interactive with full metadata:**
+
+```bash
+sam plugin create data-processor \
+  --type agent \
+  --author-name "John Doe" \
+  --author-email "john@example.com" \
+  --description "A plugin for data processing agents" \
+  --version 1.0.0 \
+  --skip
+```
+
+#### Output
+
+Creates a complete plugin structure:
+
+```
+Creating plugin 'my-analytics-plugin'...
+  Created: my-analytics-plugin/config.yaml
+  Created: my-analytics-plugin/pyproject.toml
+  Created: my-analytics-plugin/src/my_analytics_plugin/__init__.py
+  Created: my-analytics-plugin/src/my_analytics_plugin/tools.py
+  Created: my-analytics-plugin/README.md
+
+Plugin 'my-analytics-plugin' created successfully at ./my-analytics-plugin
+```
+
+**Directory structure:**
+
+```
+my-analytics-plugin/
+├── config.yaml
+├── pyproject.toml
+├── README.md
+└── src/
+    └── my_analytics_plugin/
+        ├── __init__.py
+        └── tools.py (for agent/tool types)
+        └── app.py (for gateway/custom types)
+```
+
+---
+
+### sam plugin install
+
+Installs a plugin from various sources.
+
+#### Syntax
+
+```bash
+sam plugin install <PLUGIN_SOURCE> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="PLUGIN_SOURCE" type="string" required>
+  Source of the plugin. Can be:
+  - Local path to a directory (e.g., `/path/to/plugin`)
+  - Local path to a wheel file (e.g., `/path/to/plugin.whl`)
+  - Git URL (e.g., `https://github.com/user/repo.git`)
+  - Official plugin name (e.g., `web-scraper`)
+</ParamField>
+
+#### Options
+
+<ParamField path="--install-command" type="string">
+  Command to use to install a Python package. Must follow the format `command {package} args`.
+  
+  Default: `pip3 install {package}`
+  
+  Can also be set through the environment variable `SAM_PLUGIN_INSTALL_COMMAND`.
+</ParamField>
+
+#### Examples
+
+**Install from official registry:**
+
+```bash
+sam plugin install web-scraper
+```
+
+**Install from local directory:**
+
+```bash
+sam plugin install /path/to/my-plugin
+```
+
+**Install from Git repository:**
+
+```bash
+sam plugin install https://github.com/myorg/my-plugin.git
+```
+
+**Install from wheel file:**
+
+```bash
+sam plugin install ./dist/my_plugin-1.0.0-py3-none-any.whl
+```
+
+**Custom install command:**
+
+```bash
+sam plugin install my-plugin --install-command "poetry add {package}"
+```
+
+#### Output
+
+```
+Found official plugin 'web-scraper' at: https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/web-scraper
+Attempting to install plugin using pip3 install from Git URL...
+Plugin successfully installed via from Git URL.
+Proceeding to load plugin module 'web_scraper'...
+Plugin 'web_scraper' installed and available at /path/to/site-packages/web_scraper.
+```
+
+---
+
+### sam plugin add
+
+Installs a plugin and creates a new component instance from it.
+
+#### Syntax
+
+```bash
+sam plugin add <COMPONENT_NAME> --plugin <PLUGIN_SOURCE> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="COMPONENT_NAME" type="string" required>
+  Name for the component instance to create.
+</ParamField>
+
+#### Options
+
+<ParamField path="--plugin" type="string" required>
+  Plugin source: installed module name, local path, or Git URL.
+</ParamField>
+
+<ParamField path="--install-command" type="string">
+  Command to use to install a Python package. Must follow the format `command {package} args`.
+  
+  Default: `pip3 install {package}`
+</ParamField>
+
+#### Examples
+
+**Add component from official plugin:**
+
+```bash
+sam plugin add my-scraper --plugin web-scraper
+```
+
+**Add component from local plugin:**
+
+```bash
+sam plugin add my-analyzer --plugin /path/to/analytics-plugin
+```
+
+**Add component from Git:**
+
+```bash
+sam plugin add my-tool --plugin https://github.com/myorg/tool-plugin.git
+```
+
+#### Output
+
+```
+Attempting to add component 'my-scraper' using plugin source 'web-scraper'...
+[Installation output]
+  Created component configuration: configs/agents/my-scraper.yaml
+Component 'my-scraper' created successfully from plugin 'web_scraper'.
+```
+
+The component configuration file is placed in:
+- `configs/agents/` for agent and tool plugins
+- `configs/gateways/` for gateway plugins  
+- `configs/plugins/` for other plugin types
+
+---
+
+### sam plugin build
+
+Builds the SAM plugin in the specified directory.
+
+#### Syntax
+
+```bash
+sam plugin build [PLUGIN_PATH]
+```
+
+#### Arguments
+
+<ParamField path="PLUGIN_PATH" type="path" default=".">
+  Path to plugin directory. Defaults to current directory.
+</ParamField>
+
+#### Examples
+
+**Build plugin in current directory:**
+
+```bash
+cd my-plugin
+sam plugin build
+```
+
+**Build plugin in specific directory:**
+
+```bash
+sam plugin build /path/to/my-plugin
+```
+
+#### Output
+
+```
+Building plugin in /path/to/my-plugin...
+Note: This command uses 'python -m build'. Ensure 'build' package is installed ('pip install build').
+--- Build Output ---
+[Build process output]
+--- End of Build Output ---
+Plugin built successfully! Artifacts are in: /path/to/my-plugin/dist
+Generated files:
+  - my_plugin-1.0.0-py3-none-any.whl
+  - my_plugin-1.0.0.tar.gz
+```
+
+#### Requirements
+
+Requires the `build` package:
+
+```bash
+pip install build
+```
+
+---
+
+### sam plugin catalog
+
+Launches the SAM Plugin catalog web interface.
+
+#### Syntax
+
+```bash
+sam plugin catalog [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="-p, --port" type="integer" default="5003">
+  Port to run the plugin catalog web server on.
+</ParamField>
+
+<ParamField path="--install-command" type="string">
+  Command to use to install a Python package. Must follow the format `command {package} args`.
+</ParamField>
+
+#### Examples
+
+**Launch catalog on default port:**
+
+```bash
+sam plugin catalog
+```
+
+**Launch on custom port:**
+
+```bash
+sam plugin catalog --port 8080
+```
+
+**Custom install command:**
+
+```bash
+sam plugin catalog --install-command "poetry add {package}"
+```
+
+#### Output
+
+```
+Starting Plugin Catalog backend on http://127.0.0.1:5003/?config_mode=pluginCatalog
+Opening Plugin Catalog at: http://127.0.0.1:5003/?config_mode=pluginCatalog
+[Browser opens automatically]
+```
+
+Press Ctrl+C to stop the catalog server.
+
+---
+
+## Plugin Structure
+
+A typical plugin structure created by `sam plugin create`:
+
+```
+my-plugin/
+├── config.yaml          # Plugin component configuration template
+├── pyproject.toml       # Python package metadata
+├── README.md            # Plugin documentation
+└── src/
+    └── my_plugin/
+        ├── __init__.py
+        ├── tools.py     # For agent/tool plugins
+        └── app.py       # For gateway/custom plugins
+```
+
+### config.yaml
+
+Contains placeholders like `__COMPONENT_KEBAB_CASE_NAME__` that are replaced when adding the plugin to a project.
+
+### pyproject.toml
+
+Defines package metadata including:
+- Package name and version
+- Dependencies
+- Plugin metadata in `[tool.<plugin_name>.metadata]` section
+
+## Environment Variables
+
+<ParamField path="SAM_PLUGIN_INSTALL_COMMAND" type="string">
+  Default command to install Python packages. Must include `{package}` placeholder.
+  
+  Example: `pip3 install {package}`
+</ParamField>
+
+<ParamField path="CONFIG_PORTAL_HOST" type="string" default="127.0.0.1">
+  Host for the plugin catalog web interface.
+</ParamField>
+
+## Official Plugin Registry
+
+Official plugins are hosted at:
+`https://github.com/SolaceLabs/solace-agent-mesh-core-plugins`
+
+You can install them by name:
+
+```bash
+sam plugin install <plugin-name>
+```
+
+## Implementation Details
+
+Implemented in:
+- Create: `/home/daytona/workspace/source/cli/commands/plugin_cmd/create_cmd.py`
+- Install: `/home/daytona/workspace/source/cli/commands/plugin_cmd/install_cmd.py`
+- Add: `/home/daytona/workspace/source/cli/commands/plugin_cmd/add_cmd.py`
+- Build: `/home/daytona/workspace/source/cli/commands/plugin_cmd/build_cmd.py`
+- Catalog: `/home/daytona/workspace/source/cli/commands/plugin_cmd/catalog_cmd.py`
+
+## See Also
+
+- [sam add](/api/cli/add) - Add components without plugins
+- [sam run](/api/cli/run) - Run your application
+- [sam tools](/api/cli/tools) - List built-in tools

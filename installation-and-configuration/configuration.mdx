@@ -1,0 +1,324 @@
+---
+title: Project Configuration
+description: Initialize and configure your Solace Agent Mesh project
+---
+
+## Initialization Overview
+
+Solace Agent Mesh provides multiple ways to initialize a new project:
+
+- **GUI Mode** (Recommended): Browser-based configuration interface
+- **Interactive CLI Mode**: Step-by-step command-line prompts
+- **Non-Interactive Mode**: Automated setup with command-line options
+
+## GUI Initialization
+
+The easiest way to get started is using the web-based initialization interface:
+
+<Steps>
+  <Step title="Launch GUI Initialization">
+    From your project directory, run:
+
+    ```bash
+    sam init --gui
+    ```
+
+    This will start a web server on port 5002 and open your browser automatically.
+  </Step>
+
+  <Step title="Configure Broker Settings">
+    Choose one of three broker options:
+    - **Existing Solace Broker**: Connect to a running Solace PubSub+ broker
+    - **New Local Container**: Launch a new Solace broker using Docker/Podman
+    - **Dev Mode**: Run all components in a single process (development only)
+  </Step>
+
+  <Step title="Configure LLM Settings">
+    Provide your LLM configuration:
+    - **Endpoint URL**: API endpoint (e.g., `https://api.openai.com/v1`)
+    - **API Key**: Your provider's API key
+    - **Planning Model**: Model for complex reasoning (e.g., `openai/gpt-4o`)
+    - **General Model**: Model for general tasks (e.g., `openai/gpt-3.5-turbo`)
+  </Step>
+
+  <Step title="Configure Orchestrator Agent">
+    Set up your main orchestrator:
+    - **Agent Name**: Name for your orchestrator (default: `OrchestratorAgent`)
+    - **Streaming Support**: Enable real-time streaming responses
+    - **Artifact Service**: Choose storage backend (filesystem, memory, S3, GCS)
+    - **Session Service**: Configure session persistence (memory, SQL)
+  </Step>
+
+  <Step title="Optional: Web UI Gateway">
+    Configure the chat interface:
+    - **Enable/Disable**: Add a web UI for interacting with agents
+    - **Port**: Default is 8000
+    - **Bot Name**: Customize the chatbot name
+    - **Welcome Message**: Set initial greeting
+  </Step>
+
+  <Step title="Review and Create">
+    Review all settings and click "Initialize Project". The system will:
+    - Create directory structure
+    - Generate configuration files
+    - Create `.env` file with your settings
+    - Set up database files (if using SQL)
+  </Step>
+</Steps>
+
+## Interactive CLI Initialization
+
+For a traditional command-line experience:
+
+```bash
+sam init
+```
+
+You'll be prompted for:
+
+1. **Broker Configuration**
+   ```
+   Which broker type do you want to use?
+     1) Existing Solace Pub/Sub+ broker
+     2) New local Solace broker container (requires Podman or Docker)
+     3) Run in 'dev mode' (all-in-one process, not for production)
+   ```
+
+2. **LLM Configuration**
+   - LLM Service Endpoint URL
+   - LLM Service API Key (hidden input)
+   - Planning Model Name
+   - General Model Name
+
+3. **Project Settings**
+   - Namespace (default: `solace_app/`)
+   - Agent name
+   - Artifact and session service configuration
+
+<Note>
+  The interactive mode allows you to review and modify each setting before proceeding.
+</Note>
+
+## Non-Interactive (Skip) Mode
+
+For automated deployments or CI/CD pipelines, use skip mode with command-line options:
+
+```bash
+sam init --skip \
+  --broker-type 1 \
+  --broker-url ws://your-broker:8008 \
+  --broker-vpn your-vpn \
+  --broker-username your-user \
+  --broker-password your-password \
+  --llm-service-endpoint https://api.openai.com/v1 \
+  --llm-service-api-key sk-... \
+  --llm-service-planning-model-name openai/gpt-4o \
+  --llm-service-general-model-name openai/gpt-3.5-turbo \
+  --namespace my_project/ \
+  --agent-name MyOrchestrator
+```
+
+<Warning>
+  In skip mode, all required values must be provided via CLI options. Missing values will cause initialization to fail.
+</Warning>
+
+## Generated Project Structure
+
+After initialization, your project will have the following structure:
+
+```
+my-sam-project/
+├── .env                          # Environment variables
+├── configs/
+│   ├── shared_config.yaml        # Shared configuration (broker, models)
+│   ├── logging_config.yaml       # Logging configuration
+│   ├── agents/
+│   │   └── main_orchestrator.yaml  # Main orchestrator config
+│   ├── gateways/
+│   │   └── webui.yaml            # Web UI gateway (if enabled)
+│   └── services/
+│       └── platform.yaml         # Platform service config
+├── src/                          # Custom agent code
+└── data/                         # SQLite databases (if using SQL)
+    ├── orchestrator.db
+    └── webui_gateway.db
+```
+
+## Configuration Files
+
+### shared_config.yaml
+
+Contains shared settings used across all components:
+
+```yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+
+  - models:
+      planning: &planning_model
+        model: ${LLM_SERVICE_PLANNING_MODEL_NAME}
+        api_base: ${LLM_SERVICE_ENDPOINT}
+        api_key: ${LLM_SERVICE_API_KEY}
+        parallel_tool_calls: true
+
+      general: &general_model
+        model: ${LLM_SERVICE_GENERAL_MODEL_NAME}
+        api_base: ${LLM_SERVICE_ENDPOINT}
+        api_key: ${LLM_SERVICE_API_KEY}
+```
+
+### main_orchestrator.yaml
+
+Defines the orchestrator agent configuration:
+
+```yaml
+apps:
+  - name: orchestrator_app
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      agent_name: "OrchestratorAgent"
+      model: *planning_model
+      
+      artifact_service:
+        type: filesystem
+        base_path: /tmp/samv2
+        artifact_scope: namespace
+      
+      session_service:
+        type: sql
+        database_url: ${ORCHESTRATOR_DATABASE_URL}
+        default_behavior: PERSISTENT
+```
+
+## CLI Options Reference
+
+### Broker Options
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `--broker-type` | Broker type: `1`/`solace`, `2`/`container`, `3`/`dev` | `1` |
+| `--broker-url` | Broker WebSocket URL | `ws://localhost:8008` |
+| `--broker-vpn` | Message VPN name | `default` |
+| `--broker-username` | Broker username | `default` |
+| `--broker-password` | Broker password | `default` |
+| `--container-engine` | Container engine: `docker` or `podman` | Auto-detect |
+| `--dev-mode` | Enable dev mode (shortcut for `--broker-type 3`) | `false` |
+
+### LLM Options
+
+| Option | Description |
+|--------|-------------|
+| `--llm-service-endpoint` | LLM API endpoint URL |
+| `--llm-service-api-key` | LLM API key |
+| `--llm-service-planning-model-name` | Model for planning tasks |
+| `--llm-service-general-model-name` | Model for general tasks |
+
+### Agent Options
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `--agent-name` | Orchestrator agent name | `OrchestratorAgent` |
+| `--supports-streaming` | Enable streaming | `true` |
+| `--artifact-service-type` | Storage: `memory`, `filesystem`, `s3`, `gcs` | `filesystem` |
+| `--artifact-service-base-path` | Filesystem storage path | `/tmp/samv2` |
+| `--artifact-service-scope` | Scope: `namespace`, `app`, `custom` | `namespace` |
+| `--session-service-type` | Session storage: `memory`, `sql`, `vertex_rag` | `sql` |
+| `--session-service-behavior` | Behavior: `PERSISTENT`, `RUN_BASED` | `PERSISTENT` |
+
+### Web UI Options
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `--add-webui-gateway` | Add Web UI gateway | `true` |
+| `--webui-fastapi-host` | Web UI host | `127.0.0.1` |
+| `--webui-fastapi-port` | Web UI HTTP port | `8000` |
+| `--webui-fastapi-https-port` | Web UI HTTPS port | `8443` |
+| `--webui-frontend-bot-name` | Bot display name | `Solace Agent Mesh` |
+| `--webui-frontend-welcome-message` | Welcome message | `How can I assist you today?` |
+
+## Advanced Configuration
+
+### S3 Artifact Storage
+
+To use S3 for artifact storage:
+
+```bash
+sam init --gui
+# Or via CLI:
+sam init --skip \
+  --artifact-service-type s3 \
+  --artifact-service-bucket-name my-bucket \
+  --artifact-service-region us-east-1 \
+  --artifact-service-endpoint-url https://s3.amazonaws.com  # Optional for AWS
+```
+
+Then set environment variables:
+```bash
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+```
+
+### PostgreSQL for Sessions
+
+To use PostgreSQL instead of SQLite:
+
+```bash
+sam init
+# When prompted for database:
+# Choose "postgresql" and provide connection string
+# Format: postgresql://user:password@host:5432/dbname
+```
+
+### OAuth Authentication for LLM
+
+For LLM providers requiring OAuth 2.0:
+
+<CodeGroup>
+  ```yaml Configuration
+  # In shared_config.yaml, use oauth models:
+  model: *oauth_planning_model
+  ```
+
+  ```bash Environment Variables
+  LLM_SERVICE_OAUTH_TOKEN_URL=https://oauth.provider.com/token
+  LLM_SERVICE_OAUTH_CLIENT_ID=your-client-id
+  LLM_SERVICE_OAUTH_CLIENT_SECRET=your-secret
+  LLM_SERVICE_OAUTH_SCOPE="scope1 scope2"
+  ```
+</CodeGroup>
+
+## Post-Initialization
+
+After initialization completes:
+
+<Steps>
+  <Step title="Review Generated Files">
+    Check the `.env` file and YAML configurations to ensure all settings are correct.
+  </Step>
+
+  <Step title="Test the Configuration">
+    Run your agent mesh:
+    ```bash
+    sam run
+    ```
+  </Step>
+
+  <Step title="Access the Web UI">
+    Open http://localhost:8000 in your browser to interact with your agents.
+  </Step>
+</Steps>
+
+## Next Steps
+
+- [Configure environment variables](/installation-and-configuration/environment-variables)
+- [Set up a Solace broker](/installation-and-configuration/broker-setup)
+- [Add custom agents](/tutorials/weather-agent)

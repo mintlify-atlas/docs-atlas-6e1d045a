@@ -1,0 +1,372 @@
+---
+title: 'Workflow Configuration'
+description: 'Complete reference for workflow YAML configuration schema'
+icon: 'file-code'
+---
+
+## Overview
+
+Solace Agent Mesh workflows are defined using YAML configuration that follows an **Argo Workflows-compatible syntax** with SAM extensions. This page documents the complete configuration schema.
+
+## Workflow App Configuration
+
+The top-level workflow application configuration:
+
+```yaml
+app_config:
+  namespace: ${NAMESPACE}             # SAM namespace for event routing
+  name: "MyWorkflow"                  # Unique workflow identifier
+  display_name: "My Workflow"         # Human-readable name
+  workflow:                           # Workflow definition (see below)
+    # ... workflow nodes and configuration
+  
+  # Execution settings
+  max_workflow_execution_time_seconds: 1800  # 30 minutes default
+  default_node_timeout_seconds: 300          # 5 minutes per node
+  node_cancellation_timeout_seconds: 30
+  default_max_map_items: 100
+  
+  # Service configuration
+  session_service:
+    service_type: "redis"
+    # ... session service config
+  
+  artifact_service:
+    service_type: "redis"
+    # ... artifact service config
+  
+  # Agent card publishing (workflows register as agents)
+  agent_card_publishing:
+    interval_seconds: 10
+```
+
+<ParamField path="namespace" type="string" required>
+  SAM namespace for event routing and agent discovery. All agents and workflows in the same namespace can communicate.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Unique identifier for this workflow instance. Used for agent-to-agent invocation.
+</ParamField>
+
+<ParamField path="display_name" type="string">
+  Human-readable name displayed in UI and agent cards.
+</ParamField>
+
+<ParamField path="max_workflow_execution_time_seconds" type="integer" default="1800">
+  Maximum time for entire workflow execution (in seconds).
+</ParamField>
+
+<ParamField path="default_node_timeout_seconds" type="integer" default="300">
+  Default timeout for individual node execution (in seconds).
+</ParamField>
+
+<ParamField path="default_max_map_items" type="integer" default="100">
+  Default maximum items for map nodes (safety limit).
+</ParamField>
+
+## Workflow Definition Schema
+
+The `workflow` section defines the DAG structure:
+
+```yaml
+workflow:
+  version: "1.0.0"                    # Semantic version
+  description: "Workflow description" # Human-readable description
+  
+  # Input/Output schemas (JSON Schema)
+  input_schema:
+    type: object
+    properties:
+      order_id: { type: string }
+      items: { type: array }
+    required: [order_id]
+  
+  output_schema:
+    type: object
+    properties:
+      result: { type: string }
+      status: { type: string }
+  
+  # Workflow nodes (DAG vertices)
+  nodes:
+    - id: step1
+      type: agent
+      # ... node configuration
+  
+  # Output mapping from node outputs to workflow output
+  output_mapping:
+    result: "{{final_node.output.result}}"
+    status: "success"
+  
+  # Optional: Exit handlers for cleanup/notification
+  on_exit:
+    always: cleanup_node
+    on_success: success_notification
+    on_failure: error_handler
+  
+  # Workflow-level settings
+  fail_fast: true                     # Stop on first failure
+  max_call_depth: 10                  # Prevent infinite recursion
+```
+
+<ParamField path="version" type="string" default="1.0.0">
+  Semantic version of the workflow. Used for versioning and compatibility.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of the workflow's purpose.
+</ParamField>
+
+<ParamField path="input_schema" type="object">
+  JSON Schema defining the workflow's expected input structure. Validates input on invocation.
+</ParamField>
+
+<ParamField path="output_schema" type="object">
+  JSON Schema defining the workflow's output structure. Used for validation and documentation.
+</ParamField>
+
+<ParamField path="nodes" type="array" required>
+  Array of workflow nodes (see [Workflow Types](/api/workflow/types)).
+</ParamField>
+
+<ParamField path="output_mapping" type="object" required>
+  Maps node outputs to final workflow output. Supports template expressions.
+  
+  ```yaml
+  output_mapping:
+    order_id: "{{workflow.input.order_id}}"
+    final_total: "{{price_calc.output.total}}"
+    status: "completed"
+  ```
+</ParamField>
+
+<ParamField path="on_exit" type="string | object">
+  Exit handlers for cleanup or notification. Can be:
+  - **String**: Single node ID to run on completion
+  - **Object**: Conditional handlers:
+    - `always`: Run regardless of outcome
+    - `on_success`: Run only on success
+    - `on_failure`: Run only on failure
+    - `on_cancel`: Run only on cancellation
+  
+  ```yaml
+  on_exit:
+    always: cleanup
+    on_failure: send_alert
+  ```
+</ParamField>
+
+<ParamField path="fail_fast" type="boolean" default="true">
+  If `true`, stop scheduling new nodes when one fails. Running nodes continue to completion.
+</ParamField>
+
+<ParamField path="max_call_depth" type="integer" default="10">
+  Maximum allowed call depth for sub-workflow/agent invocations. Prevents infinite recursion.
+</ParamField>
+
+<ParamField path="skills" type="array">
+  Workflow skills for agent card (used in agent discovery).
+  
+  ```yaml
+  skills:
+    - id: "process_order"
+      name: "Process Order"
+      description: "End-to-end order processing"
+      tags: ["order", "workflow"]
+  ```
+</ParamField>
+
+## Template Expressions
+
+Workflows support Jinja2-style template expressions for dynamic value resolution:
+
+### Workflow Input References
+
+```yaml
+# Reference workflow input
+input:
+  order_id: "{{workflow.input.order_id}}"
+  customer: "{{workflow.input.customer_id}}"
+```
+
+**Argo-compatible alias:** `{{workflow.parameters.x}}` → `{{workflow.input.x}}`
+
+### Node Output References
+
+```yaml
+# Reference output from previous node
+input:
+  total: "{{price_calc.output.final_total}}"
+  customer_name: "{{enrichment.output.customer.name}}"
+```
+
+### Map Loop Variables
+
+```yaml
+# Reference current item in map iteration
+input:
+  item_id: "{{_map_item.id}}"
+  index: "{{_map_index}}"
+```
+
+**Argo-compatible alias:** `{{item}}` → `{{_map_item}}`
+
+### Loop Iteration Variables
+
+```yaml
+# Reference current iteration count
+input:
+  iteration: "{{_loop_iteration}}"
+```
+
+### Operators
+
+#### Coalesce Operator
+
+Returns first non-null value:
+
+```yaml
+shipping_method:
+  coalesce:
+    - "{{express_ship.output.method}}"
+    - "{{standard_ship.output.method}}"
+    - "{{economy_ship.output.method}}"
+    - "unknown"  # fallback
+```
+
+#### Concat Operator
+
+Concatenates strings:
+
+```yaml
+message:
+  concat:
+    - "Order "
+    - "{{workflow.input.order_id}}"
+    - " processed successfully"
+```
+
+## Retry Strategy
+
+Workflows support Argo-compatible retry strategies:
+
+```yaml
+# Workflow-level default retry strategy
+retry_strategy:
+  limit: 3                            # Max retry attempts
+  retry_policy: "OnFailure"           # When to retry
+  backoff:
+    duration: "5s"                    # Initial backoff
+    factor: 2.0                       # Exponential multiplier
+    max_duration: "1m"                # Max backoff cap
+
+nodes:
+  - id: flaky_node
+    type: agent
+    agent_name: "FlakyAgent"
+    # Node-level retry override
+    retry_strategy:
+      limit: 5
+      retry_policy: "Always"
+```
+
+<ParamField path="retry_strategy.limit" type="integer" default="3">
+  Maximum number of retry attempts.
+</ParamField>
+
+<ParamField path="retry_strategy.retry_policy" type="string" default="OnFailure">
+  When to retry:
+  - `"Always"`: Retry on any completion
+  - `"OnFailure"`: Retry on failure
+  - `"OnError"`: Retry on error only
+</ParamField>
+
+<ParamField path="retry_strategy.backoff" type="object">
+  Exponential backoff configuration.
+</ParamField>
+
+## Complete Example
+
+```yaml
+app_config:
+  namespace: "production"
+  name: "OrderProcessingWorkflow"
+  display_name: "Order Processing Pipeline"
+  
+  workflow:
+    version: "2.1.0"
+    description: "Complete order processing with validation, pricing, and fulfillment"
+    
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: string }
+        customer_id: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              quantity: { type: integer, minimum: 1 }
+              price: { type: number, minimum: 0 }
+      required: [order_id, customer_id, items]
+    
+    output_schema:
+      type: object
+      properties:
+        order_id: { type: string }
+        status: { type: string }
+        total: { type: number }
+        tracking_id: { type: string }
+      required: [order_id, status]
+    
+    nodes:
+      - id: validate
+        type: agent
+        agent_name: "OrderValidator"
+        input:
+          order: "{{workflow.input}}"
+      
+      - id: price
+        type: agent
+        agent_name: "PriceCalculator"
+        depends_on: [validate]
+        input:
+          items: "{{workflow.input.items}}"
+      
+      - id: fulfill
+        type: agent
+        agent_name: "Fulfillment"
+        depends_on: [price]
+        input:
+          order_id: "{{workflow.input.order_id}}"
+          total: "{{price.output.total}}"
+    
+    output_mapping:
+      order_id: "{{workflow.input.order_id}}"
+      status: "completed"
+      total: "{{price.output.total}}"
+      tracking_id: "{{fulfill.output.tracking_id}}"
+    
+    on_exit:
+      always: cleanup
+      on_failure: send_alert
+    
+    fail_fast: true
+    max_call_depth: 10
+  
+  max_workflow_execution_time_seconds: 1800
+  default_node_timeout_seconds: 300
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflow Types" icon="diagram-project" href="/api/workflow/types">
+    Learn about workflow node types: agent, switch, map, loop
+  </Card>
+  <Card title="Workflow Execution" icon="play" href="/api/workflow/execution">
+    Understand workflow execution model and DAG scheduling
+  </Card>
+</CardGroup>

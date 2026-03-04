@@ -1,0 +1,434 @@
+---
+title: 'sam task'
+description: 'Send tasks to agents and receive streaming responses'
+---
+
+## Overview
+
+The `sam task` command sends tasks to the webui gateway and receives streaming responses via Server-Sent Events (SSE).
+
+## Syntax
+
+```bash
+sam task <SUBCOMMAND> [OPTIONS]
+```
+
+## Description
+
+The task command provides two ways to interact with SAM agents:
+
+- **send**: Send tasks to a running SAM instance
+- **run**: Start SAM, send a task, and stop (all-in-one command)
+
+Both subcommands support file attachments, session continuity, artifact downloads, and STIM (Solace Task Interaction Model) file generation.
+
+## Subcommands
+
+### sam task send
+
+Send a task to a running webui gateway and stream the response.
+
+#### Syntax
+
+```bash
+sam task send <MESSAGE> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="MESSAGE" type="string" required>
+  The prompt text to send to the agent.
+</ParamField>
+
+#### Options
+
+<ParamField path="-u, --url" type="string" default="http://localhost:8000">
+  Base URL of the webui gateway.
+  
+  Can be set via environment variable: `SAM_WEBUI_URL`
+</ParamField>
+
+<ParamField path="-a, --agent" type="string" default="orchestrator">
+  Target agent name.
+  
+  Can be set via environment variable: `SAM_AGENT`
+</ParamField>
+
+<ParamField path="-s, --session-id" type="string">
+  Session ID for context continuity. Generates new if not provided.
+</ParamField>
+
+<ParamField path="-t, --token" type="string">
+  Bearer token for authentication.
+  
+  Can be set via environment variable: `SAM_AUTH_TOKEN`
+</ParamField>
+
+<ParamField path="-f, --file" type="path[]">
+  File(s) to attach. Can be used multiple times.
+  
+  Example: `-f doc1.pdf -f doc2.txt`
+</ParamField>
+
+<ParamField path="--timeout" type="integer" default="120">
+  Timeout in seconds for SSE connection.
+</ParamField>
+
+<ParamField path="-o, --output-dir" type="path">
+  Output directory for artifacts and logs.
+  
+  Default: `/tmp/sam-task-{taskId}`
+</ParamField>
+
+<ParamField path="-q, --quiet" type="boolean" default="false">
+  Suppress streaming output, only show final result.
+</ParamField>
+
+<ParamField path="--no-stim" type="boolean" default="false">
+  Do not fetch the STIM file on completion.
+</ParamField>
+
+<ParamField path="--debug" type="boolean" default="false">
+  Enable debug output.
+</ParamField>
+
+#### Examples
+
+**Basic usage:**
+
+```bash
+sam task send "What is the weather today?"
+```
+
+**Specify agent:**
+
+```bash
+sam task send "Analyze this data" --agent data_analyst
+```
+
+**With file attachment:**
+
+```bash
+sam task send "Summarize this document" --file ./document.pdf
+```
+
+**Continue from previous session:**
+
+```bash
+sam task send "What did we discuss?" --session-id abc-123
+```
+
+**Custom URL with authentication:**
+
+```bash
+sam task send "Hello" --url https://mygateway.com --token $MY_TOKEN
+```
+
+**Multiple files and custom output:**
+
+```bash
+sam task send "Compare these files" \
+  --file file1.txt \
+  --file file2.txt \
+  --output-dir ./results
+```
+
+**Quiet mode (final result only):**
+
+```bash
+sam task send "Generate report" --quiet
+```
+
+#### Output
+
+**Normal mode (streaming):**
+
+```
+Task ID: task-abc123
+Session ID: session-xyz789  (use with --session-id to continue)
+
+[Agent response streams here in real-time]
+
+Completed in 12.5s
+
+Artifacts saved to: /tmp/sam-task-abc123
+  - artifact1.pdf
+  - artifact2.json
+
+STIM file: /tmp/sam-task-abc123/task-abc123.stim
+```
+
+**Quiet mode:**
+
+```
+[Final agent response only]
+```
+
+**Debug mode:**
+
+```
+[DEBUG] Target URL: http://localhost:8000
+[DEBUG] Fetching available agents...
+[DEBUG] Found 3 agents
+[DEBUG] Resolved agent name: orchestrator
+[Task execution output]
+```
+
+---
+
+### sam task run
+
+Start SAM, send a task, stream the response, and stop.
+
+#### Syntax
+
+```bash
+sam task run <MESSAGE> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="MESSAGE" type="string" required>
+  The prompt text to send to the agent.
+</ParamField>
+
+#### Options
+
+Includes all options from `sam task send` plus:
+
+<ParamField path="-c, --config" type="path[]">
+  YAML config files or directories. Can be used multiple times.
+  
+  Defaults to `configs/` directory.
+</ParamField>
+
+<ParamField path="-s, --skip" type="string[]">
+  File name(s) to exclude from configs (e.g., `-s my_agent.yaml`).
+</ParamField>
+
+<ParamField path="--timeout" type="integer" default="300">
+  Timeout in seconds for task execution (note: different default from send).
+</ParamField>
+
+<ParamField path="--startup-timeout" type="integer" default="60">
+  Timeout in seconds for agent readiness.
+</ParamField>
+
+<ParamField path="--system-env" type="boolean" default="false">
+  Use system environment variables only; do not load `.env` file.
+</ParamField>
+
+#### Examples
+
+**Basic usage with default configs:**
+
+```bash
+sam task run "What agents are available?"
+```
+
+**Specify config files:**
+
+```bash
+sam task run "Hello" \
+  -c examples/agents/orchestrator.yaml \
+  -c examples/gateways/webui.yaml
+```
+
+**With file attachment:**
+
+```bash
+sam task run "Summarize this document" \
+  --file ./document.pdf \
+  -c configs/
+```
+
+**Target specific agent:**
+
+```bash
+sam task run "Analyze data" \
+  --agent data_analyst \
+  -c configs/
+```
+
+**Custom startup timeout:**
+
+```bash
+sam task run "Hello" \
+  --startup-timeout 120 \
+  -c configs/
+```
+
+**Skip specific config files:**
+
+```bash
+sam task run "Test" \
+  -c configs/ \
+  -s test_agent.yaml \
+  -s experimental.yaml
+```
+
+#### Output
+
+```
+Starting SAM with 3 config file(s)...
+SAM started.
+Waiting for agents (timeout: 60s)...
+Agents ready: orchestrator, data_analyst, web_scraper
+
+Task ID: task-abc123
+Session ID: session-xyz789
+
+[Agent response streams here]
+
+Completed in 15.3s
+
+Artifacts saved to: /tmp/sam-task-run-abc123
+STIM file: /tmp/sam-task-run-abc123/task-abc123.stim
+
+Stopping SAM...
+Done.
+```
+
+---
+
+## Agent Readiness
+
+The `sam task run` command implements an agent readiness algorithm:
+
+1. Poll `/api/v1/agentCards` until at least one agent is detected
+2. Wait 2 seconds for stabilization (allows all agents to register)
+3. Poll again to get the final agent list
+4. Verify the target agent exists
+5. Proceed with task execution
+
+This ensures all agents are fully initialized before sending tasks.
+
+## Session Management
+
+Sessions allow multi-turn conversations with agents:
+
+```bash
+# First interaction
+sam task send "What is 2+2?"
+# Output: Session ID: session-abc123
+
+# Follow-up using same session
+sam task send "Multiply that by 3" --session-id session-abc123
+```
+
+Session IDs are:
+- Auto-generated if not provided
+- Displayed in the output after each task
+- Used to maintain conversation context
+
+## File Attachments
+
+Attach files to provide context to agents:
+
+```bash
+sam task send "Analyze this" \
+  --file data.csv \
+  --file report.pdf \
+  --file image.png
+```
+
+Supported file types depend on the agent's configuration and tools.
+
+## Artifacts
+
+Agents can generate artifacts (files, images, data) during task execution:
+
+- Automatically downloaded to output directory
+- Output directory structure:
+  ```
+  /tmp/sam-task-abc123/
+  ├── artifacts/
+  │   ├── chart.png
+  │   └── report.pdf
+  └── task-abc123.stim
+  ```
+
+## STIM Files
+
+STIM (Solace Task Interaction Model) files capture the complete task interaction:
+
+- Contains full request/response history
+- Includes metadata, artifacts, and events
+- Saved as `{taskId}.stim` in output directory
+- Skip generation with `--no-stim` flag
+
+## Authentication
+
+For protected gateways, provide a bearer token:
+
+```bash
+# Via flag
+sam task send "Hello" --token eyJhbGci...
+
+# Via environment variable
+export SAM_AUTH_TOKEN=eyJhbGci...
+sam task send "Hello"
+```
+
+## Exit Codes
+
+- `0`: Task completed successfully
+- `1`: Error (connection failed, agent not found, timeout, etc.)
+
+## Implementation Details
+
+Implemented in:
+- Send: `/home/daytona/workspace/source/cli/commands/task_cmd/send.py`
+- Run: `/home/daytona/workspace/source/cli/commands/task_cmd/run.py`
+
+Uses:
+- SSE (Server-Sent Events) for streaming responses
+- httpx for async HTTP operations
+- SAMRunner for process management (run command)
+
+## Troubleshooting
+
+### Error: Failed to connect
+
+**Cause:** Gateway not running or wrong URL
+
+**Solution:**
+```bash
+# Verify gateway is running
+sam run configs/gateways/webui.yaml
+
+# Or use correct URL
+sam task send "Hello" --url http://correct-host:8000
+```
+
+### Error: Agent not found
+
+**Cause:** Specified agent doesn't exist
+
+**Solution:**
+```bash
+# List available agents
+sam task send "list agents" --agent orchestrator
+
+# Or check agent names in configs
+grep "name:" configs/agents/*.yaml
+```
+
+### Timeout waiting for agents
+
+**Cause:** Agents taking too long to start
+
+**Solution:**
+```bash
+# Increase startup timeout
+sam task run "Hello" --startup-timeout 120
+
+# Check logs for startup issues
+cat /tmp/sam-task-run-*/sam.log
+```
+
+## See Also
+
+- [sam run](/api/cli/run) - Run SAM application
+- [sam add agent](/api/cli/add) - Create new agents
+- [sam tools](/api/cli/tools) - List available agent tools

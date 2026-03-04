@@ -1,0 +1,449 @@
+---
+title: Environment Variables
+description: Complete reference for configuring Solace Agent Mesh through environment variables
+---
+
+## Overview
+
+Solace Agent Mesh uses environment variables to configure brokers, LLM services, and runtime behavior. All environment variables are stored in the `.env` file in your project root.
+
+<Note>
+  The `.env` file is created automatically during `sam init`. Never commit this file to version control as it contains sensitive credentials.
+</Note>
+
+## Core Environment Variables
+
+### Broker Configuration
+
+These variables configure the connection to your Solace PubSub+ broker:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `SOLACE_BROKER_URL` | WebSocket URL for broker connection | `ws://localhost:8008` | `wss://broker.example.com:443` |
+| `SOLACE_BROKER_VPN` | Message VPN name | `default` | `production-vpn` |
+| `SOLACE_BROKER_USERNAME` | Authentication username | `default` | `sam-service-account` |
+| `SOLACE_BROKER_PASSWORD` | Authentication password | `default` | `secure-password-123` |
+| `SOLACE_DEV_MODE` | Enable internal dev broker (no external broker needed) | `false` | `true` or `false` |
+
+<CodeGroup>
+  ```bash Production Broker
+  SOLACE_BROKER_URL="wss://production-broker.example.com:443"
+  SOLACE_BROKER_VPN="production-vpn"
+  SOLACE_BROKER_USERNAME="service-account"
+  SOLACE_BROKER_PASSWORD="secure-password"
+  SOLACE_DEV_MODE="false"
+  ```
+
+  ```bash Local Container
+  SOLACE_BROKER_URL="ws://localhost:8008"
+  SOLACE_BROKER_VPN="default"
+  SOLACE_BROKER_USERNAME="default"
+  SOLACE_BROKER_PASSWORD="default"
+  SOLACE_DEV_MODE="false"
+  ```
+
+  ```bash Dev Mode
+  SOLACE_BROKER_URL="INTERNAL_DEV_BROKER"
+  SOLACE_BROKER_VPN="dev_vpn"
+  SOLACE_BROKER_USERNAME="dev_user"
+  SOLACE_BROKER_PASSWORD="dev_pass"
+  SOLACE_DEV_MODE="true"
+  ```
+</CodeGroup>
+
+### LLM Service Configuration
+
+Configure your LLM provider (OpenAI, Anthropic, Azure, or any LiteLLM-compatible service):
+
+| Variable | Description | Required | Example |
+|----------|-------------|----------|--------|
+| `LLM_SERVICE_ENDPOINT` | LLM API base URL | Yes | `https://api.openai.com/v1` |
+| `LLM_SERVICE_API_KEY` | API key for authentication | Yes | `sk-proj-...` |
+| `LLM_SERVICE_PLANNING_MODEL_NAME` | Model for complex planning tasks | Yes | `openai/gpt-4o` |
+| `LLM_SERVICE_GENERAL_MODEL_NAME` | Model for general tasks | Yes | `openai/gpt-3.5-turbo` |
+
+<CodeGroup>
+  ```bash OpenAI
+  LLM_SERVICE_ENDPOINT="https://api.openai.com/v1"
+  LLM_SERVICE_API_KEY="sk-proj-..."
+  LLM_SERVICE_PLANNING_MODEL_NAME="openai/gpt-4o"
+  LLM_SERVICE_GENERAL_MODEL_NAME="openai/gpt-3.5-turbo"
+  ```
+
+  ```bash Anthropic
+  LLM_SERVICE_ENDPOINT="https://api.anthropic.com"
+  LLM_SERVICE_API_KEY="sk-ant-..."
+  LLM_SERVICE_PLANNING_MODEL_NAME="anthropic/claude-3-5-sonnet-20241022"
+  LLM_SERVICE_GENERAL_MODEL_NAME="anthropic/claude-3-haiku-20240307"
+  ```
+
+  ```bash Azure OpenAI
+  LLM_SERVICE_ENDPOINT="https://your-resource.openai.azure.com"
+  LLM_SERVICE_API_KEY="your-azure-key"
+  LLM_SERVICE_PLANNING_MODEL_NAME="azure/gpt-4o"
+  LLM_SERVICE_GENERAL_MODEL_NAME="azure/gpt-35-turbo"
+  ```
+
+  ```bash Custom Endpoint
+  LLM_SERVICE_ENDPOINT="https://llm.mycompany.com/v1"
+  LLM_SERVICE_API_KEY="custom-api-key"
+  LLM_SERVICE_PLANNING_MODEL_NAME="company/custom-model-large"
+  LLM_SERVICE_GENERAL_MODEL_NAME="company/custom-model-small"
+  ```
+</CodeGroup>
+
+### LLM OAuth 2.0 Configuration
+
+For LLM providers requiring OAuth 2.0 Client Credentials flow:
+
+| Variable | Description | Required | Example |
+|----------|-------------|----------|--------|
+| `LLM_SERVICE_OAUTH_ENDPOINT` | OAuth-protected LLM endpoint | Yes* | `https://llm.example.com/v1` |
+| `LLM_SERVICE_OAUTH_TOKEN_URL` | OAuth token endpoint | Yes* | `https://auth.example.com/oauth/token` |
+| `LLM_SERVICE_OAUTH_CLIENT_ID` | OAuth client ID | Yes* | `sam-client-id` |
+| `LLM_SERVICE_OAUTH_CLIENT_SECRET` | OAuth client secret | Yes* | `client-secret-xyz` |
+| `LLM_SERVICE_OAUTH_SCOPE` | OAuth scopes (space-separated) | No | `llm.read llm.write` |
+| `LLM_SERVICE_OAUTH_CA_CERT_PATH` | Custom CA certificate path | No | `/path/to/ca-cert.pem` |
+| `LLM_SERVICE_OAUTH_TOKEN_REFRESH_BUFFER_SECONDS` | Token refresh buffer time | No | `300` |
+| `LLM_SERVICE_OAUTH_PLANNING_MODEL_NAME` | Planning model (OAuth) | Yes* | `company/planning-model` |
+| `LLM_SERVICE_OAUTH_GENERAL_MODEL_NAME` | General model (OAuth) | Yes* | `company/general-model` |
+
+<Note>
+  *Required only when using OAuth authentication. Use `*oauth_planning_model` or `*oauth_general_model` in your YAML configs to enable OAuth.
+</Note>
+
+```bash
+LLM_SERVICE_OAUTH_ENDPOINT="https://llm.mycompany.com/v1"
+LLM_SERVICE_OAUTH_TOKEN_URL="https://auth.mycompany.com/oauth/token"
+LLM_SERVICE_OAUTH_CLIENT_ID="sam-production-client"
+LLM_SERVICE_OAUTH_CLIENT_SECRET="super-secret-value"
+LLM_SERVICE_OAUTH_SCOPE="llm.inference"
+LLM_SERVICE_OAUTH_TOKEN_REFRESH_BUFFER_SECONDS="300"
+LLM_SERVICE_OAUTH_PLANNING_MODEL_NAME="internal/gpt-4-equivalent"
+LLM_SERVICE_OAUTH_GENERAL_MODEL_NAME="internal/gpt-3.5-equivalent"
+```
+
+### Project Configuration
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `NAMESPACE` | Topic namespace prefix for all agents | `solace_app/` | `my_project/` |
+| `LOGGING_CONFIG_PATH` | Path to logging configuration | `configs/logging_config.yaml` | `configs/custom_logging.yaml` |
+
+```bash
+NAMESPACE="production/customer_service/"
+LOGGING_CONFIG_PATH="configs/logging_config.yaml"
+```
+
+<Warning>
+  The `NAMESPACE` must end with a forward slash (`/`) for proper topic routing.
+</Warning>
+
+## Web UI Gateway Variables
+
+Configuration for the built-in chat interface:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `FASTAPI_HOST` | Host address for FastAPI server | `127.0.0.1` | `0.0.0.0` |
+| `FASTAPI_PORT` | HTTP port for web UI | `8000` | `8080` |
+| `FASTAPI_HTTPS_PORT` | HTTPS port (when SSL enabled) | `8443` | `443` |
+| `SESSION_SECRET_KEY` | Secret key for session encryption | Auto-generated | `your-secret-key-here` |
+| `ENABLE_EMBED_RESOLUTION` | Enable dynamic embeds in responses | `true` | `true` or `false` |
+| `SSL_KEYFILE` | Path to SSL private key file | Empty | `/path/to/privkey.pem` |
+| `SSL_CERTFILE` | Path to SSL certificate file | Empty | `/path/to/fullchain.pem` |
+| `SSL_KEYFILE_PASSWORD` | Password for encrypted key file | Empty | `key-password` |
+
+<CodeGroup>
+  ```bash HTTP Only
+  FASTAPI_HOST="127.0.0.1"
+  FASTAPI_PORT="8000"
+  SESSION_SECRET_KEY="randomly-generated-secret-key"
+  ENABLE_EMBED_RESOLUTION="true"
+  SSL_KEYFILE=""
+  SSL_CERTFILE=""
+  ```
+
+  ```bash HTTPS Enabled
+  FASTAPI_HOST="0.0.0.0"
+  FASTAPI_PORT="8000"
+  FASTAPI_HTTPS_PORT="8443"
+  SESSION_SECRET_KEY="randomly-generated-secret-key"
+  SSL_KEYFILE="/etc/ssl/private/sam-key.pem"
+  SSL_CERTFILE="/etc/ssl/certs/sam-cert.pem"
+  SSL_KEYFILE_PASSWORD="my-key-password"
+  ```
+</CodeGroup>
+
+<Note>
+  To generate a secure session secret key:
+  ```bash
+  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
+</Note>
+
+## Platform Service Variables
+
+Configuration for the Platform API (management interface):
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `PLATFORM_API_HOST` | Platform API host | `127.0.0.1` | `0.0.0.0` |
+| `PLATFORM_API_PORT` | Platform API port | `8001` | `9000` |
+| `PLATFORM_SERVICE_URL` | Full Platform API URL | Auto-generated | `http://localhost:8001` |
+
+```bash
+PLATFORM_API_HOST="0.0.0.0"
+PLATFORM_API_PORT="8001"
+PLATFORM_SERVICE_URL="http://localhost:8001"
+```
+
+## Artifact Storage Variables
+
+Configure where agent-generated files are stored:
+
+### S3-Compatible Storage
+
+For AWS S3, MinIO, or other S3-compatible services:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `S3_BUCKET_NAME` | S3 bucket name | Empty | `sam-artifacts` |
+| `S3_ENDPOINT_URL` | S3 endpoint (leave empty for AWS S3) | Empty | `https://s3.us-east-1.amazonaws.com` |
+| `S3_REGION` | AWS region | `us-east-1` | `us-west-2` |
+| `AWS_ACCESS_KEY_ID` | AWS access key | N/A | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | N/A | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+
+<CodeGroup>
+  ```bash AWS S3
+  S3_BUCKET_NAME="my-sam-artifacts"
+  S3_ENDPOINT_URL=""
+  S3_REGION="us-east-1"
+  AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
+  AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  ```
+
+  ```bash MinIO
+  S3_BUCKET_NAME="sam-artifacts"
+  S3_ENDPOINT_URL="http://minio.example.com:9000"
+  S3_REGION="us-east-1"
+  AWS_ACCESS_KEY_ID="minioadmin"
+  AWS_SECRET_ACCESS_KEY="minioadmin"
+  ```
+</CodeGroup>
+
+### Google Cloud Storage
+
+For GCS artifact storage:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+GCS_BUCKET_NAME="sam-artifacts-bucket"
+```
+
+## Database Variables
+
+For SQL-based session and state storage:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|--------|
+| `ORCHESTRATOR_DATABASE_URL` | Orchestrator session database | `sqlite:///data/orchestrator.db` | `postgresql://user:pass@host/db` |
+| `WEB_UI_GATEWAY_DATABASE_URL` | Web UI session database | `sqlite:///data/webui_gateway.db` | `postgresql://user:pass@host/db` |
+
+<CodeGroup>
+  ```bash SQLite (Default)
+  ORCHESTRATOR_DATABASE_URL="sqlite:///data/orchestrator.db"
+  WEB_UI_GATEWAY_DATABASE_URL="sqlite:///data/webui_gateway.db"
+  ```
+
+  ```bash PostgreSQL
+  ORCHESTRATOR_DATABASE_URL="postgresql://sam_user:password@localhost:5432/sam_orchestrator"
+  WEB_UI_GATEWAY_DATABASE_URL="postgresql://sam_user:password@localhost:5432/sam_webui"
+  ```
+
+  ```bash PostgreSQL with SSL
+  ORCHESTRATOR_DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require"
+  WEB_UI_GATEWAY_DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require"
+  ```
+</CodeGroup>
+
+## Optional Service Variables
+
+### Image Generation
+
+For agents that generate images:
+
+```bash
+IMAGE_SERVICE_ENDPOINT="https://api.openai.com/v1"
+IMAGE_SERVICE_API_KEY="sk-..."
+IMAGE_MODEL_NAME="dall-e-3"
+```
+
+### Report Generation
+
+For custom report generation models:
+
+```bash
+LLM_REPORT_MODEL_NAME="openai/gpt-4o"
+```
+
+### Auto-Summarization
+
+Prevents token limit errors by auto-summarizing conversation history:
+
+```bash
+SAM_ENABLE_AUTO_SUMMARIZATION="false"  # Set to "true" to enable
+SAM_COMPACTION_PERCENTAGE="0.25"  # Compact 25% of history when threshold exceeded
+```
+
+### Queue Configuration
+
+```bash
+USE_TEMPORARY_QUEUES="true"  # Use temporary queues for agent responses
+```
+
+## Environment Variable Substitution
+
+YAML configuration files can reference environment variables using `${VAR_NAME}` or `${VAR_NAME, default_value}` syntax:
+
+```yaml
+# In shared_config.yaml
+broker_connection:
+  broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+  broker_username: ${SOLACE_BROKER_USERNAME, default}
+  
+model:
+  model: ${LLM_SERVICE_PLANNING_MODEL_NAME}
+  api_base: ${LLM_SERVICE_ENDPOINT}
+  api_key: ${LLM_SERVICE_API_KEY}
+```
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Never Commit .env Files">
+    Add `.env` to your `.gitignore`:
+
+    ```bash .gitignore
+    .env
+    .env.*
+    !.env.example
+    ```
+  </Step>
+
+  <Step title="Use Environment-Specific Files">
+    Create separate env files for different environments:
+
+    ```bash
+    .env.development
+    .env.staging  
+    .env.production
+    ```
+  </Step>
+
+  <Step title="Restrict File Permissions">
+    Protect your `.env` file:
+
+    ```bash
+    chmod 600 .env
+    ```
+  </Step>
+
+  <Step title="Rotate Secrets Regularly">
+    - Rotate API keys periodically
+    - Use different credentials per environment
+    - Monitor for unauthorized access
+  </Step>
+
+  <Step title="Use Secret Management Services">
+    For production, consider:
+    - AWS Secrets Manager
+    - HashiCorp Vault
+    - Azure Key Vault
+    - Google Secret Manager
+  </Step>
+</Steps>
+
+## Example .env File
+
+Complete example with all common variables:
+
+```bash
+# Broker Configuration
+SOLACE_BROKER_URL="ws://localhost:8008"
+SOLACE_BROKER_VPN="default"
+SOLACE_BROKER_USERNAME="default"
+SOLACE_BROKER_PASSWORD="default"
+SOLACE_DEV_MODE="false"
+
+# LLM Configuration
+LLM_SERVICE_ENDPOINT="https://api.openai.com/v1"
+LLM_SERVICE_API_KEY="sk-proj-..."
+LLM_SERVICE_PLANNING_MODEL_NAME="openai/gpt-4o"
+LLM_SERVICE_GENERAL_MODEL_NAME="openai/gpt-3.5-turbo"
+
+# Project Settings
+NAMESPACE="my_project/"
+LOGGING_CONFIG_PATH="configs/logging_config.yaml"
+
+# Web UI Gateway
+FASTAPI_HOST="127.0.0.1"
+FASTAPI_PORT="8000"
+FASTAPI_HTTPS_PORT="8443"
+SESSION_SECRET_KEY="your-random-secret-key-here"
+ENABLE_EMBED_RESOLUTION="true"
+SSL_KEYFILE=""
+SSL_CERTFILE=""
+SSL_KEYFILE_PASSWORD=""
+
+# Platform Service
+PLATFORM_API_HOST="127.0.0.1"
+PLATFORM_API_PORT="8001"
+PLATFORM_SERVICE_URL="http://127.0.0.1:8001"
+
+# Artifact Storage
+S3_BUCKET_NAME=""
+S3_ENDPOINT_URL=""
+S3_REGION="us-east-1"
+
+# Database URLs
+ORCHESTRATOR_DATABASE_URL="sqlite:///data/orchestrator.db"
+WEB_UI_GATEWAY_DATABASE_URL="sqlite:///data/webui_gateway.db"
+```
+
+## Troubleshooting
+
+### Variables Not Loading
+
+If environment variables aren't being recognized:
+
+1. Check `.env` file exists in project root
+2. Verify no syntax errors (no spaces around `=`)
+3. Restart the agent mesh: `sam run`
+4. Check for typos in variable names
+
+### Invalid Values
+
+If you see "invalid value" errors:
+
+1. Check for extra quotes or spaces
+2. Boolean values should be `true` or `false` (lowercase)
+3. URLs should include protocol (`http://` or `https://`)
+4. Namespaces must end with `/`
+
+### Missing Required Variables
+
+If required variables are missing:
+
+```bash
+# Re-run initialization to regenerate .env
+sam init
+
+# Or manually add missing variables from the example above
+```
+
+## Next Steps
+
+- [Run your agent mesh](/quickstart)
+- [Add custom agents](/tutorials/weather-agent)
+- [Configure logging](/deployment/production-best-practices#monitoring)

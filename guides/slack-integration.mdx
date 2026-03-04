@@ -1,0 +1,645 @@
+---
+title: Slack Integration
+description: Integrate Solace Agent Mesh with Slack to enable AI-powered conversations in your workspace
+---
+
+# Slack Integration
+
+This guide shows you how to integrate Slack with Solace Agent Mesh, enabling your team to interact with AI agents directly from Slack channels and direct messages.
+
+## Overview
+
+The Slack integration provides:
+- Real-time conversations with agents via Slack
+- File uploads and downloads through Slack
+- Threaded conversations with context retention
+- Status indicators and typing notifications
+- Markdown formatting and rich messages
+- Feedback buttons for response quality
+- Multi-user support with identity management
+
+## Prerequisites
+
+Before starting:
+
+- [Install Solace Agent Mesh](/installation-and-configuration/installation)
+- [Create a new project](/quickstart)
+- Admin access to a Slack workspace
+
+## Quick Start
+
+<Steps>
+
+### Step 1: Create Slack App
+
+Go to [Slack API](https://api.slack.com/apps) and create a new app:
+
+1. Click **Create New App**
+2. Choose **From a manifest**
+3. Select your workspace
+4. Paste the following manifest:
+
+```yaml slack_manifest.yaml
+display_information:
+  name: Agent Mesh Bot
+  description: AI assistant powered by Solace Agent Mesh
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Agent Mesh
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:join
+      - channels:read
+      - chat:write
+      - chat:write.public
+      - files:read
+      - files:write
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - im:write
+      - mpim:history
+      - mpim:read
+      - reactions:read
+      - reactions:write
+      - users.profile:read
+      - users:read.email
+      - users:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.groups
+      - message.im
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+```
+
+<Note>
+You can customize the name and description, but keep the permissions and settings as shown.
+</Note>
+
+### Step 2: Generate Tokens
+
+**App-Level Token:**
+1. Go to **Basic Information** > **App-Level Tokens**
+2. Click **Generate Token and Scopes**
+3. Name it "Socket Mode Token"
+4. Add all available scopes
+5. Click **Generate**
+6. Save the token (starts with `xapp-`)
+
+**Bot Token:**
+1. Go to **Install App** under **Settings**
+2. Click **Install to Workspace**
+3. Authorize the app
+4. Save the Bot User OAuth Token (starts with `xoxb-`)
+
+### Step 3: Install Slack Gateway Plugin
+
+Add the Slack gateway to your Agent Mesh project:
+
+```bash
+sam plugin add slack-bot --plugin sam-slack
+```
+
+### Step 4: Configure Environment Variables
+
+Add the tokens to your `.env` file:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_APP_TOKEN=xapp-your-app-token-here
+```
+
+### Step 5: Run the Slack Gateway
+
+Start the gateway:
+
+```bash
+sam run configs/gateways/slack-bot.yaml
+```
+
+You should see:
+```
+Slack Gateway initialized successfully
+Connected to Slack via Socket Mode
+Listening for Slack events...
+```
+
+### Step 6: Test the Integration
+
+1. Open your Slack workspace
+2. Find **Agent Mesh** under **Apps**
+3. Send a message: "Hello!"
+4. You should see:
+   - A "thinking" status indicator
+   - A response from the agent within seconds
+
+</Steps>
+
+## Complete Configuration
+
+Here's a production-ready Slack gateway configuration:
+
+```yaml slack_gateway.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: slack_gateway.log
+
+!include shared_config.yaml
+
+apps:
+  - name: slack_gateway_app
+    app_base_path: .
+    app_module: solace_agent_mesh.gateway.generic.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      
+      # Gateway adapter
+      gateway_adapter: sam_slack_gateway_adapter.adapter.SlackAdapter
+      
+      # Slack-specific configuration
+      adapter_config:
+        slack_bot_token: ${SLACK_BOT_TOKEN}
+        slack_app_token: ${SLACK_APP_TOKEN}
+        
+        # Status message while processing
+        slack_initial_status_message: ":thinking_face: Thinking..."
+        
+        # Markdown formatting
+        correct_markdown_formatting: true
+        
+        # User identity caching
+        slack_email_cache_ttl_seconds: 3600  # 1 hour
+        
+        # Feedback buttons
+        feedback_enabled: true
+      
+      # Artifact service for file handling
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      # Default agent to route messages to
+      default_agent_name: "OrchestratorAgent"
+      
+      # System instructions
+      system_purpose: |
+        You are an AI assistant accessible via Slack.
+        
+        Your capabilities:
+        - Answer questions and provide information
+        - Analyze files and documents
+        - Generate reports and summaries
+        - Coordinate with specialized agents for complex tasks
+        
+        **Always return artifacts and files you create to the user.**
+        Provide status updates before each major step.
+        Your external name is Agent Mesh.
+      
+      response_format: |
+        Format responses in Slack-compatible Markdown:
+        - Use *bold* and _italic_ for emphasis
+        - Use `code` for inline code
+        - Use ```code blocks``` for multi-line code
+        - Use > for quotes
+        - Use bullet points and numbered lists
+        
+        Be clear, concise, and professional.
+        Users cannot access internal artifacts - you must return
+        files via the artifact_return embed.
+      
+      # Embed resolution for dynamic content
+      enable_embed_resolution: true
+      gateway_artifact_content_limit_bytes: 10000000  # 10MB
+      gateway_recursive_embed_depth: 3
+      
+      # Feedback collection
+      feedback_publishing:
+        enabled: true
+```
+
+## Usage Patterns
+
+### Direct Messages
+
+Users can DM the bot directly:
+
+```
+User: What's the weather like today?
+Agent Mesh: I don't have access to real-time weather data, but...
+```
+
+### Channel Mentions
+
+Mention the bot in channels:
+
+```
+User: @Agent Mesh summarize this document
+Agent Mesh: I'll analyze the document...
+```
+
+### Threaded Conversations
+
+Continue conversations in threads for better context:
+
+```
+User: Create a report on Q4 sales
+Agent Mesh: [Creates report]
+  User: (in thread) Can you add a chart?
+  Agent Mesh: (in thread) [Adds chart to report]
+```
+
+### File Uploads
+
+Upload files for analysis:
+
+```
+User: [Uploads data.csv] Analyze this data
+Agent Mesh: I'll analyze the CSV file. It contains...
+```
+
+## Customization
+
+### Custom Status Messages
+
+Change the thinking indicator:
+
+```yaml
+adapter_config:
+  slack_initial_status_message: ":robot_face: Processing your request..."
+```
+
+Disable status messages:
+
+```yaml
+adapter_config:
+  slack_initial_status_message: ""  # Empty string disables
+```
+
+### Agent Selection
+
+Route to specific agents by name:
+
+```
+User: @Agent Mesh [to DatabaseAgent] How many orders last month?
+```
+
+Or configure a different default:
+
+```yaml
+app_config:
+  default_agent_name: "ResearchAgent"  # Default to research agent
+```
+
+### Markdown Formatting
+
+Disable automatic markdown correction:
+
+```yaml
+adapter_config:
+  correct_markdown_formatting: false
+```
+
+### Feedback Buttons
+
+Disable feedback buttons:
+
+```yaml
+adapter_config:
+  feedback_enabled: false
+```
+
+## Identity and Permissions
+
+### User Identity
+
+The Slack adapter automatically extracts user identity:
+
+```yaml
+adapter_config:
+  slack_email_cache_ttl_seconds: 3600  # Cache user info for 1 hour
+```
+
+User information includes:
+- Slack user ID
+- Email address
+- Display name
+- Real name
+
+### Role-Based Access Control
+
+Integrate with SAM's RBAC system:
+
+```yaml
+app_config:
+  # Add RBAC configuration
+  rbac:
+    role_definitions_path: "config/roles.yaml"
+    user_assignments_path: "config/users.yaml"
+```
+
+## Advanced Features
+
+### Multiple Channels
+
+The bot can be added to multiple channels:
+
+1. Invite the bot: `/invite @Agent Mesh`
+2. The bot will join and respond to mentions
+
+### Private Channels
+
+Add the bot to private channels:
+
+1. Go to channel settings
+2. Select **Integrations**
+3. Click **Add apps**
+4. Choose **Agent Mesh**
+
+### Reactions
+
+The adapter can use reactions for quick feedback:
+
+```yaml
+adapter_config:
+  use_reactions: true  # Add checkmark when complete
+```
+
+### File Downloads
+
+Agents can upload files to Slack:
+
+```
+User: Generate a CSV of customer data
+Agent Mesh: [Uploads customers.csv to Slack]
+```
+
+Files are automatically uploaded when agents create artifacts.
+
+## Troubleshooting
+
+<Warning>
+**Common Issues:**
+
+1. **Bot not responding**: Check Socket Mode is enabled in Slack app settings
+2. **Permission errors**: Verify all required OAuth scopes are granted
+3. **Files not uploading**: Check `files:write` scope is enabled
+4. **Identity errors**: Ensure `users:read.email` scope is present
+5. **Connection drops**: Socket Mode can disconnect; the adapter auto-reconnects
+</Warning>
+
+### Enable Debug Logging
+
+```yaml
+log:
+  stdout_log_level: DEBUG
+  log_file_level: DEBUG
+  log_file: slack_debug.log
+```
+
+### Verify Tokens
+
+Test tokens with Slack API:
+
+```bash
+curl -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+  https://slack.com/api/auth.test
+```
+
+### Check Event Subscriptions
+
+Ensure these events are subscribed:
+- `app_mention`
+- `message.groups`
+- `message.im`
+
+### Monitor Logs
+
+```bash
+tail -f slack_gateway.log | grep -i error
+```
+
+## Best Practices
+
+<Tip>
+**Slack Integration Tips:**
+
+1. **Clear Instructions**: Include Slack-specific guidance in system_purpose
+2. **Markdown**: Use Slack-compatible markdown formatting
+3. **Threads**: Encourage threaded conversations for context
+4. **Status Updates**: Keep users informed with status messages
+5. **File Handling**: Always return generated files as Slack uploads
+6. **Error Messages**: Provide user-friendly error messages
+7. **Rate Limits**: Be aware of Slack API rate limits
+8. **Testing**: Test in a private channel before rolling out
+</Tip>
+
+## Example Interactions
+
+### Data Analysis
+
+```
+User: [Uploads sales.csv] Analyze sales trends
+
+Agent Mesh: :thinking_face: Analyzing sales.csv...
+
+I've analyzed the sales data. Here are the key findings:
+
+*Summary Statistics:*
+• Total sales: $1,245,678
+• Average order value: $156.32
+• Number of orders: 7,968
+
+*Top Trends:*
+1. Sales increased 23% in Q4
+2. Electronics category leading at 34% of revenue
+3. Weekend sales 15% higher than weekdays
+
+I've created a detailed report with visualizations.
+[Uploads sales_analysis.pdf]
+
+Would you like me to drill into any specific aspect?
+```
+
+### Multi-Agent Workflow
+
+```
+User: Create a customer report for the executive team
+
+Agent Mesh: :thinking_face: Working on the customer report...
+
+I'm coordinating with specialized agents to create a comprehensive report:
+
+:mag: DatabaseAgent - Querying customer data...
+:bar_chart: AnalyticsAgent - Generating charts and metrics...
+:page_facing_up: ReportAgent - Formatting executive summary...
+
+Report complete! Here's what I've prepared:
+
+*Customer Report - Q4 2024*
+
+:chart_with_upwards_trend: *Key Metrics:*
+• Total customers: 15,432 (+12% QoQ)
+• Active customers: 8,901 (58%)
+• Customer LTV: $2,345
+• Churn rate: 3.2% (-0.5% QoQ)
+
+[Uploads customer_report_executive.pdf]
+[Uploads customer_metrics.xlsx]
+
+The PDF contains the executive summary, and the Excel file has detailed breakdowns.
+```
+
+### File Processing
+
+```
+User: [Uploads contract.pdf] Extract key terms from this contract
+
+Agent Mesh: :thinking_face: Analyzing contract.pdf...
+
+I've reviewed the 24-page contract. Here are the key terms:
+
+*Contract Summary:*
+• *Parties:* ABC Corp and XYZ Inc
+• *Effective Date:* January 1, 2025
+• *Term:* 36 months
+• *Value:* $450,000 annually
+
+*Key Obligations:*
+1. Monthly deliverables due by 5th of each month
+2. Quarterly business reviews required
+3. 90-day termination notice required
+
+*Important Clauses:*
+• Auto-renewal unless 60 days notice given
+• Price escalation: 3% annually
+• Liability cap: $1,000,000
+
+I've created a detailed extraction with all clauses.
+[Uploads contract_key_terms.pdf]
+
+Would you like me to compare this with your standard contract template?
+```
+
+## Integration with Other Systems
+
+### Slack + Database
+
+Query databases from Slack:
+
+```
+User: @Agent Mesh how many new customers this month?
+Agent Mesh: (via DatabaseAgent) We have 342 new customers this month...
+```
+
+### Slack + Web Search
+
+Research from Slack:
+
+```
+User: Research competitor pricing
+Agent Mesh: (via WebResearchAgent) I've researched pricing across 5 competitors...
+```
+
+### Slack + Workflows
+
+Trigger complex workflows:
+
+```
+User: Run the monthly report workflow
+Agent Mesh: (via WorkflowEngine) Starting monthly report workflow...
+```
+
+## Security Considerations
+
+<Warning>
+**Security Best Practices:**
+
+1. **Token Security**: Never commit tokens to version control
+2. **Environment Variables**: Use `.env` file (add to `.gitignore`)
+3. **Workspace Access**: Only install in trusted workspaces
+4. **Permissions**: Grant minimum required OAuth scopes
+5. **RBAC**: Implement role-based access control for sensitive operations
+6. **Audit Logging**: Enable logging for compliance
+7. **Data Retention**: Configure artifact cleanup policies
+</Warning>
+
+## Performance Optimization
+
+### Caching
+
+Cache user information to reduce API calls:
+
+```yaml
+adapter_config:
+  slack_email_cache_ttl_seconds: 3600  # 1 hour
+```
+
+### Streaming
+
+Enable response streaming for faster perceived performance:
+
+```yaml
+app_config:
+  supports_streaming: true
+```
+
+### Concurrent Requests
+
+Handle multiple concurrent Slack users efficiently (built-in).
+
+## Monitoring and Analytics
+
+### Usage Metrics
+
+Track gateway usage:
+
+```bash
+grep "Task submitted" slack_gateway.log | wc -l
+```
+
+### Error Tracking
+
+```bash
+grep -i "error" slack_gateway.log
+```
+
+### User Activity
+
+```bash
+grep "user_id" slack_gateway.log | cut -d'"' -f4 | sort | uniq -c
+```
+
+## Next Steps
+
+- [Building Gateways](/guides/building-gateways) - Create custom gateways
+- [Creating Custom Agents](/guides/creating-custom-agents) - Build Slack-optimized agents
+- [SQL Database Integration](/guides/sql-database-integration) - Query databases from Slack
+- [Workflow Development](/guides/workflow-development) - Trigger workflows from Slack
+
+## Additional Resources
+
+- [Slack API Documentation](https://api.slack.com/)
+- [Socket Mode Guide](https://api.slack.com/apis/connections/socket)
+- [Slack App Manifest Reference](https://api.slack.com/reference/manifests)
+- [Example Slack Gateway](https://github.com/SolaceLabs/solace-agent-mesh/blob/main/examples/gateways/slack_gateway_example.yaml)

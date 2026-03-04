@@ -1,0 +1,749 @@
+---
+title: "SQL Database Integration"
+description: "Enable your agents to query and analyze data from SQL databases"
+---
+
+<Info>
+  **What you'll build**: An agent that can query a SQL database and answer business questions
+  
+  **Time**: ~15 minutes
+  
+  **Prerequisites**:
+  - Completed the [Hello World tutorial](/tutorials/hello-world)
+  - Basic SQL knowledge
+  - SQLite installed (included with Python)
+</Info>
+
+## What you'll learn
+
+This tutorial demonstrates:
+- Using built-in SQL query tools
+- Creating and populating sample databases
+- Enabling agents to analyze data
+- Best practices for database security
+- Query result visualization
+
+## Use case: Coffee shop analytics
+
+We'll create a coffee shop database and an agent that can answer business questions like:
+- "What are our top-selling products?"
+- "Which customer has spent the most?"
+- "What's our total revenue this month?"
+
+## Step-by-step guide
+
+<Steps>
+<Step title="Create a sample database">
+
+Create a Python script to set up your database:
+
+```python create_coffee_db.py
+import sqlite3
+from datetime import datetime, timedelta
+import random
+
+def create_database():
+    # Connect to database (creates it if it doesn't exist)
+    conn = sqlite3.connect('coffee_shop.db')
+    cursor = conn.cursor()
+    
+    # Create tables
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        price REAL NOT NULL
+    )
+    ''')
+    
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        loyalty_points INTEGER DEFAULT 0
+    )
+    ''')
+    
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        order_date TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (product_id) REFERENCES products(id)
+    )
+    ''')
+    
+    # Insert sample products
+    products = [
+        ('Espresso', 'Coffee', 3.50),
+        ('Cappuccino', 'Coffee', 4.50),
+        ('Latte', 'Coffee', 4.75),
+        ('Americano', 'Coffee', 3.75),
+        ('Mocha', 'Coffee', 5.25),
+        ('Croissant', 'Pastry', 3.25),
+        ('Muffin', 'Pastry', 3.50),
+        ('Bagel', 'Pastry', 2.75),
+        ('Green Tea', 'Tea', 3.00),
+        ('Chai Latte', 'Tea', 4.25),
+    ]
+    
+    cursor.executemany(
+        'INSERT INTO products (name, category, price) VALUES (?, ?, ?)',
+        products
+    )
+    
+    # Insert sample customers
+    customers = [
+        ('Alice Johnson', 'alice@email.com', 150),
+        ('Bob Smith', 'bob@email.com', 230),
+        ('Carol White', 'carol@email.com', 95),
+        ('David Brown', 'david@email.com', 180),
+        ('Eve Davis', 'eve@email.com', 320),
+    ]
+    
+    cursor.executemany(
+        'INSERT INTO customers (name, email, loyalty_points) VALUES (?, ?, ?)',
+        customers
+    )
+    
+    # Generate sample orders for the past 30 days
+    start_date = datetime.now() - timedelta(days=30)
+    
+    for _ in range(100):
+        customer_id = random.randint(1, 5)
+        product_id = random.randint(1, 10)
+        quantity = random.randint(1, 3)
+        
+        # Get product price
+        cursor.execute('SELECT price FROM products WHERE id = ?', (product_id,))
+        price = cursor.fetchone()[0]
+        total = price * quantity
+        
+        # Random date in the past 30 days
+        days_ago = random.randint(0, 30)
+        order_date = (start_date + timedelta(days=days_ago)).strftime('%Y-%m-%d')
+        
+        cursor.execute(
+            '''INSERT INTO orders 
+               (customer_id, product_id, quantity, order_date, total_amount) 
+               VALUES (?, ?, ?, ?, ?)''',
+            (customer_id, product_id, quantity, order_date, total)
+        )
+    
+    conn.commit()
+    conn.close()
+    
+    print("✓ Database created successfully!")
+    print("✓ Sample data inserted")
+    print("\nDatabase file: coffee_shop.db")
+
+if __name__ == '__main__':
+    create_database()
+```
+
+Run the script:
+
+```bash
+python create_coffee_db.py
+```
+
+This creates `coffee_shop.db` with sample data.
+
+</Step>
+
+<Step title="Create the database analyst agent">
+
+Create `database_agent.yaml`:
+
+```yaml database_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: database_agent.log
+
+!include shared_config.yaml
+
+apps:
+  - name: database_analyst_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      agent_name: "DatabaseAnalyst"
+      display_name: "Coffee Shop Data Analyst"
+      model: *planning_model
+      
+      instruction: |
+        You are a data analyst for a coffee shop. You have access to a SQL
+        database with information about products, customers, and orders.
+        
+        When asked questions about the business:
+        1. Write a SQL query to get the needed information
+        2. Execute the query using the sql_query tool
+        3. Analyze the results
+        4. Provide insights in a business-friendly format
+        
+        Database schema:
+        
+        **products** table:
+        - id: INTEGER (primary key)
+        - name: TEXT (product name)
+        - category: TEXT (Coffee, Pastry, Tea)
+        - price: REAL (price in dollars)
+        
+        **customers** table:
+        - id: INTEGER (primary key)
+        - name: TEXT (customer name)
+        - email: TEXT (email address)
+        - loyalty_points: INTEGER (reward points)
+        
+        **orders** table:
+        - id: INTEGER (primary key)
+        - customer_id: INTEGER (foreign key to customers)
+        - product_id: INTEGER (foreign key to products)
+        - quantity: INTEGER (number of items)
+        - order_date: TEXT (YYYY-MM-DD format)
+        - total_amount: REAL (total cost)
+        
+        Always explain your queries and findings clearly. When showing
+        data, format it as tables or charts when appropriate.
+      
+      # Enable SQL query tools
+      tools:
+        - tool_type: builtin-group
+          group_name: "data_analysis"
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+      
+      # Data analysis configuration
+      data_tools_config:
+        sqlite_memory_threshold_mb: 100
+        max_result_preview_rows: 50
+      
+      supports_streaming: true
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+      
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      
+      agent_card:
+        description: |
+          Analyzes coffee shop business data using SQL queries.
+          Can answer questions about sales, customers, and products.
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "sales_analysis"
+            name: "Sales Analysis"
+            description: "Analyzes sales data and revenue"
+            examples:
+              - "What are our top-selling products?"
+              - "What's our total revenue this month?"
+            tags: ["analytics", "sql"]
+          - id: "customer_insights"
+            name: "Customer Insights"
+            description: "Provides customer analytics"
+            examples:
+              - "Who are our best customers?"
+              - "How many customers do we have?"
+            tags: ["analytics", "crm"]
+      
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+```
+
+</Step>
+
+<Step title="Configure database connection">
+
+Add database configuration to your `.env` file:
+
+```bash .env
+# Existing configuration...
+
+# Database settings
+DATABASE_URL=sqlite:///coffee_shop.db
+```
+
+<Note>
+  For PostgreSQL: `postgresql://user:password@localhost/dbname`
+  
+  For MySQL: `mysql://user:password@localhost/dbname`
+</Note>
+
+</Step>
+
+<Step title="Run and test the database agent">
+
+Start the agent:
+
+```bash
+sam run -f database_agent.yaml
+```
+
+Open the Web UI and try these queries:
+
+**Test 1: Top products**
+```
+What are our top 5 selling products?
+```
+
+**Expected behavior:**
+The agent will:
+1. Write a SQL query to count orders by product
+2. Execute the query
+3. Present results in a formatted table
+
+**Test 2: Revenue analysis**
+```
+What's our total revenue for the past 30 days?
+```
+
+**Test 3: Customer insights**
+```
+Who is our best customer by total spending?
+```
+
+**Test 4: Product categories**
+```
+Show me sales breakdown by product category
+```
+
+</Step>
+
+<Step title="View query execution in logs">
+
+Check the logs to see SQL queries being executed:
+
+```bash
+tail -f database_agent.log
+```
+
+You should see:
+```
+[DEBUG] Tool called: sql_query
+[DEBUG] Query: SELECT p.name, COUNT(o.id) as order_count
+               FROM products p
+               JOIN orders o ON p.id = o.product_id
+               GROUP BY p.id
+               ORDER BY order_count DESC
+               LIMIT 5
+[DEBUG] Results: 5 rows returned
+```
+
+</Step>
+</Steps>
+
+## Understanding built-in data analysis tools
+
+SAM includes several built-in tools for data analysis:
+
+### SQL Query Tool
+
+```yaml
+tools:
+  - tool_type: builtin-group
+    group_name: "data_analysis"
+```
+
+This provides:
+- **sql_query**: Execute SQL queries on configured databases
+- **jq_query**: Process JSON data with jq syntax
+- **create_chart**: Generate visualizations from data
+
+### SQL Query Tool Usage
+
+The agent can call it like this:
+
+```python
+# Agent's internal tool call
+result = sql_query(
+    query="SELECT name, price FROM products WHERE category = 'Coffee'",
+    database_url="sqlite:///coffee_shop.db"
+)
+```
+
+The tool returns:
+```json
+{
+  "status": "success",
+  "rows": [
+    {"name": "Espresso", "price": 3.50},
+    {"name": "Cappuccino", "price": 4.50},
+    ...
+  ],
+  "row_count": 5,
+  "columns": ["name", "price"]
+}
+```
+
+## Security best practices
+
+<Warning>
+  **Never expose write access to production databases!**
+</Warning>
+
+### Read-only database user
+
+For production, create a read-only database user:
+
+```sql PostgreSQL example
+-- Create read-only user
+CREATE USER analyst_agent WITH PASSWORD 'secure_password';
+
+-- Grant read-only access
+GRANT CONNECT ON DATABASE coffee_shop TO analyst_agent;
+GRANT USAGE ON SCHEMA public TO analyst_agent;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_agent;
+
+-- Prevent write operations
+REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM analyst_agent;
+```
+
+Update your connection string:
+```bash
+DATABASE_URL=postgresql://analyst_agent:secure_password@localhost/coffee_shop
+```
+
+### Query validation
+
+Add instruction guardrails:
+
+```yaml
+instruction: |
+  IMPORTANT SECURITY RULES:
+  - NEVER execute INSERT, UPDATE, DELETE, or DROP queries
+  - ONLY execute SELECT queries
+  - If asked to modify data, explain you can only read data
+  - Limit results to reasonable sizes (use LIMIT clause)
+```
+
+### Query timeouts
+
+Configure timeouts to prevent expensive queries:
+
+```yaml
+data_tools_config:
+  query_timeout_seconds: 30
+  max_result_rows: 1000
+  max_result_size_mb: 10
+```
+
+## Advanced data analysis
+
+<AccordionGroup>
+  <Accordion title="Create visualizations">
+    The agent can create charts from query results:
+    
+    ```yaml
+    instruction: |
+      After running queries, create visualizations:
+      1. For time series: use line charts
+      2. For comparisons: use bar charts
+      3. For proportions: use pie charts
+      
+      Use the create_chart tool with the query results.
+    ```
+    
+    The agent will generate charts and save them as artifacts.
+  </Accordion>
+
+  <Accordion title="Multi-database queries">
+    Configure access to multiple databases:
+    
+    ```yaml
+    instruction: |
+      You have access to multiple databases:
+      
+      **Sales Database** (sqlite:///sales.db):
+      - orders, products, customers tables
+      
+      **Inventory Database** (postgresql://host/inventory):
+      - stock, suppliers, warehouses tables
+      
+      When querying, specify which database to use.
+    ```
+  </Accordion>
+
+  <Accordion title="Join with external data">
+    Combine database queries with API data:
+    
+    ```yaml
+    tools:
+      - tool_type: builtin-group
+        group_name: "data_analysis"
+      - tool_type: python
+        component_module: api_tools
+        function_name: fetch_external_data
+    
+    instruction: |
+      You can combine database data with external APIs:
+      1. Query the database for internal data
+      2. Fetch related external data via APIs
+      3. Merge and analyze the combined dataset
+    ```
+  </Accordion>
+
+  <Accordion title="Scheduled reports">
+    Create a workflow that runs periodic reports:
+    
+    ```yaml
+    workflow:
+      name: "DailyRevenueReport"
+      schedule: "0 9 * * *"  # Every day at 9 AM
+      nodes:
+        - id: query_data
+          type: agent
+          agent_name: "DatabaseAnalyst"
+          instruction: "Generate yesterday's revenue report"
+        
+        - id: send_email
+          type: agent
+          agent_name: "EmailAgent"
+          input:
+            report: "{{query_data.output}}"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Example queries and use cases
+
+### Sales analytics
+
+```sql
+-- Daily revenue trend
+SELECT 
+    order_date,
+    SUM(total_amount) as revenue,
+    COUNT(DISTINCT customer_id) as customers
+FROM orders
+GROUP BY order_date
+ORDER BY order_date DESC
+LIMIT 30;
+
+-- Best-selling products
+SELECT 
+    p.name,
+    p.category,
+    COUNT(o.id) as orders,
+    SUM(o.quantity) as units_sold,
+    SUM(o.total_amount) as revenue
+FROM products p
+JOIN orders o ON p.id = o.product_id
+GROUP BY p.id
+ORDER BY revenue DESC;
+```
+
+### Customer analytics
+
+```sql
+-- Customer lifetime value
+SELECT 
+    c.name,
+    c.email,
+    COUNT(o.id) as total_orders,
+    SUM(o.total_amount) as lifetime_value,
+    c.loyalty_points
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+GROUP BY c.id
+ORDER BY lifetime_value DESC;
+
+-- Customer segmentation
+SELECT 
+    CASE 
+        WHEN total_spent > 100 THEN 'High Value'
+        WHEN total_spent > 50 THEN 'Medium Value'
+        ELSE 'Low Value'
+    END as segment,
+    COUNT(*) as customer_count
+FROM (
+    SELECT customer_id, SUM(total_amount) as total_spent
+    FROM orders
+    GROUP BY customer_id
+) AS customer_spending
+GROUP BY segment;
+```
+
+## Testing database queries
+
+Create a test suite:
+
+```python test_database_agent.py
+import sqlite3
+import pytest
+
+def test_database_exists():
+    """Test that the database file exists and is accessible."""
+    conn = sqlite3.connect('coffee_shop.db')
+    cursor = conn.cursor()
+    
+    # Check tables exist
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )
+    tables = [row[0] for row in cursor.fetchall()]
+    
+    assert 'products' in tables
+    assert 'customers' in tables
+    assert 'orders' in tables
+    
+    conn.close()
+    print("✓ Database structure validated")
+
+def test_sample_data():
+    """Test that sample data is present."""
+    conn = sqlite3.connect('coffee_shop.db')
+    cursor = conn.cursor()
+    
+    # Check products
+    cursor.execute("SELECT COUNT(*) FROM products")
+    assert cursor.fetchone()[0] > 0
+    
+    # Check customers
+    cursor.execute("SELECT COUNT(*) FROM customers")
+    assert cursor.fetchone()[0] > 0
+    
+    # Check orders
+    cursor.execute("SELECT COUNT(*) FROM orders")
+    assert cursor.fetchone()[0] > 0
+    
+    conn.close()
+    print("✓ Sample data validated")
+
+def test_query_performance():
+    """Test that queries execute efficiently."""
+    import time
+    
+    conn = sqlite3.connect('coffee_shop.db')
+    cursor = conn.cursor()
+    
+    start = time.time()
+    cursor.execute("""
+        SELECT p.name, SUM(o.total_amount) as revenue
+        FROM products p
+        JOIN orders o ON p.id = o.product_id
+        GROUP BY p.id
+        ORDER BY revenue DESC
+    """)
+    results = cursor.fetchall()
+    elapsed = time.time() - start
+    
+    assert len(results) > 0
+    assert elapsed < 1.0  # Should complete in under 1 second
+    
+    conn.close()
+    print(f"✓ Query executed in {elapsed:.3f} seconds")
+
+if __name__ == '__main__':
+    test_database_exists()
+    test_sample_data()
+    test_query_performance()
+    print("\n✓ All database tests passed!")
+```
+
+Run tests:
+```bash
+python test_database_agent.py
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="MCP Servers" icon="plug" href="/tutorials/mcp-servers">
+  Integrate Model Context Protocol servers
+</Card>
+
+<Card title="RAG Implementation" icon="brain" href="/tutorials/rag-implementation">
+  Build retrieval-augmented generation systems
+</Card>
+
+<Card title="Complex Workflows" icon="diagram-nested" href="/tutorials/complex-workflows">
+  Create advanced multi-step workflows
+</Card>
+
+<Card title="Production Deployment" icon="rocket" href="/tutorials/production-deployment">
+  Deploy your agents to production
+</Card>
+
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database not found error">
+    **Problem**: "Database file not found"
+    
+    **Solution**:
+    1. Verify the database file exists: `ls -la coffee_shop.db`
+    2. Check the path in `DATABASE_URL` is correct
+    3. Use absolute paths if needed: `sqlite:////full/path/to/coffee_shop.db`
+  </Accordion>
+
+  <Accordion title="Permission denied">
+    **Problem**: "Permission denied accessing database"
+    
+    **Solution**:
+    ```bash
+    # Make database readable
+    chmod 644 coffee_shop.db
+    
+    # Make directory readable
+    chmod 755 $(dirname coffee_shop.db)
+    ```
+  </Accordion>
+
+  <Accordion title="Query timeout">
+    **Problem**: "Query execution timeout"
+    
+    **Solution**:
+    1. Add indexes to frequently queried columns
+    2. Increase timeout in configuration:
+    ```yaml
+    data_tools_config:
+      query_timeout_seconds: 60
+    ```
+    3. Optimize the query (use EXPLAIN to analyze)
+  </Accordion>
+
+  <Accordion title="Connection pool errors">
+    **Problem**: "Too many database connections"
+    
+    **Solution**:
+    For production databases, configure connection pooling:
+    ```bash
+    DATABASE_URL=postgresql://user:pass@host/db?pool_size=10&max_overflow=20
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Key concepts learned
+
+<Check>
+  - Using built-in SQL query tools
+  - Creating and populating databases
+  - Configuring database connections
+  - Security best practices for database access
+  - Building data analysis agents
+  - Testing database integrations
+</Check>
+
+You now know how to create agents that can analyze structured data from databases. This is essential for building business intelligence and analytics applications!

@@ -1,0 +1,467 @@
+---
+title: Creating Custom Agents
+description: Learn how to build custom agents with specialized capabilities in Solace Agent Mesh
+---
+
+# Creating Custom Agents
+
+This guide walks you through creating custom agents in Solace Agent Mesh. You'll learn how to define agent configurations, set up tools, configure behaviors, and enable agent-to-agent communication.
+
+## Understanding Agents
+
+Agents in Solace Agent Mesh are specialized AI components that:
+- Have specific instructions and personas
+- Use LLM models for reasoning and decision-making
+- Have access to specific tools and capabilities
+- Can communicate with other agents via the A2A protocol
+- Maintain session state and manage artifacts
+
+## Creating Your First Agent
+
+<Steps>
+
+### Step 1: Set Up the Agent Configuration File
+
+Create a YAML configuration file for your agent. Here's a basic structure:
+
+```yaml agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: my_agent.log
+
+# Include shared configuration for broker and models
+!include shared_config.yaml
+
+apps:
+  - name: my_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "MyCustomAgent"
+      display_name: "My Custom Agent"
+      model: *planning_model
+      
+      instruction: |
+        You are a helpful assistant specialized in [your domain].
+        Your primary responsibilities are:
+        - [Responsibility 1]
+        - [Responsibility 2]
+        - [Responsibility 3]
+        
+        Always provide clear, actionable responses.
+```
+
+### Step 2: Configure Tools
+
+Add tools that your agent can use. Agents can access built-in tools, custom Python functions, or MCP servers:
+
+```yaml
+tools:
+  # Built-in tool groups
+  - tool_type: builtin-group
+    group_name: "artifact_management"
+  
+  - tool_type: builtin-group
+    group_name: "data_analysis"
+  
+  # Individual built-in tools
+  - tool_type: builtin
+    tool_name: "time_delay"
+  
+  # Custom Python tools
+  - tool_type: python
+    component_module: "my_package.tools"
+    function_name: "my_custom_function"
+```
+
+<Note>
+See [Creating Custom Tools](/guides/creating-custom-tools) for details on building your own tools.
+</Note>
+
+### Step 3: Configure Session and Artifact Services
+
+Define how your agent manages conversation history and files:
+
+```yaml
+session_service:
+  type: "memory"  # or "persistent" for database-backed sessions
+  default_behavior: "PERSISTENT"  # or "RUN_BASED" for stateless
+
+artifact_service:
+  type: "filesystem"  # or "s3" for cloud storage
+  base_path: "/tmp/samv2"
+  artifact_scope: "namespace"  # Share artifacts across the namespace
+
+artifact_handling_mode: "reference"  # Show metadata, not full content
+enable_embed_resolution: true
+enable_artifact_content_instruction: true
+```
+
+### Step 4: Define the Agent Card
+
+The agent card describes your agent's capabilities for discovery by other agents:
+
+```yaml
+agent_card:
+  description: |
+    This agent specializes in [domain]. It can [capability 1],
+    [capability 2], and [capability 3].
+  
+  defaultInputModes: ["text"]
+  defaultOutputModes: ["text", "file"]
+  
+  skills:
+    - id: "skill_1"
+      name: "Skill Name"
+      description: "What this skill does"
+      examples:
+        - "Example task 1"
+        - "Example task 2"
+      tags: ["category1", "category2"]
+    
+    - id: "skill_2"
+      name: "Another Skill"
+      description: "What this other skill does"
+      examples:
+        - "Example task 3"
+      tags: ["category3"]
+```
+
+<Tip>
+Be specific in your skill descriptions and examples. This helps other agents understand when to delegate tasks to your agent.
+</Tip>
+
+### Step 5: Enable Agent Discovery and Communication
+
+Configure how your agent interacts with the mesh:
+
+```yaml
+# Publish agent card for discovery
+agent_card_publishing:
+  interval_seconds: 10
+
+# Enable discovery by other agents
+agent_discovery:
+  enabled: true
+
+# Configure inter-agent communication
+inter_agent_communication:
+  allow_list: ["*"]  # Allow all agents, or specify: ["AgentA", "AgentB"]
+  request_timeout_seconds: 120
+```
+
+</Steps>
+
+## Complete Example: Data Processing Agent
+
+Here's a complete example of a specialized data processing agent:
+
+```yaml data_processor_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: data_processor.log
+
+!include shared_config.yaml
+
+apps:
+  - name: data_processor_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "DataProcessor"
+      display_name: "Data Processor"
+      model: *planning_model
+      
+      instruction: |
+        You are an expert data processing agent.
+        
+        Your capabilities:
+        - Transform and clean data files (CSV, JSON, Excel)
+        - Perform statistical analysis
+        - Generate visualizations and reports
+        - Validate data against schemas
+        
+        Workflow:
+        1. Analyze the input data structure
+        2. Apply requested transformations or analysis
+        3. Create output artifacts with results
+        4. Provide summary and insights
+        
+        Always save processed data as artifacts and return them to the user.
+      
+      input_schema:
+        type: object
+        properties:
+          data_file:
+            type: string
+            description: "Name of the data file to process"
+          operation:
+            type: string
+            enum: ["transform", "analyze", "visualize", "validate"]
+          parameters:
+            type: object
+            description: "Operation-specific parameters"
+      
+      output_schema:
+        type: object
+        properties:
+          result_file:
+            type: string
+            description: "Name of the output file"
+          summary:
+            type: string
+            description: "Summary of processing results"
+          statistics:
+            type: object
+            description: "Statistical metrics"
+      
+      tools:
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+        
+        - tool_type: builtin-group
+          group_name: "data_analysis"
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+      
+      agent_card:
+        description: |
+          Data processing specialist that transforms, analyzes, and visualizes
+          structured data. Supports CSV, JSON, and Excel formats.
+        
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text", "file"]
+        
+        skills:
+          - id: "data_transformation"
+            name: "Data Transformation"
+            description: "Clean, filter, and transform data files"
+            examples:
+              - "Convert CSV to JSON"
+              - "Remove duplicates from the dataset"
+              - "Filter records where revenue > 1000"
+            tags: ["etl", "transformation"]
+          
+          - id: "data_analysis"
+            name: "Statistical Analysis"
+            description: "Perform statistical analysis on datasets"
+            examples:
+              - "Calculate mean, median, and standard deviation"
+              - "Identify outliers in the data"
+              - "Generate correlation matrix"
+            tags: ["statistics", "analysis"]
+          
+          - id: "data_visualization"
+            name: "Data Visualization"
+            description: "Create charts and graphs from data"
+            examples:
+              - "Create a bar chart of sales by region"
+              - "Generate a time series plot"
+              - "Make a scatter plot of price vs quantity"
+            tags: ["visualization", "charts"]
+      
+      agent_card_publishing:
+        interval_seconds: 10
+      
+      agent_discovery:
+        enabled: true
+      
+      inter_agent_communication:
+        allow_list: ["*"]
+        request_timeout_seconds: 120
+```
+
+## Advanced Agent Features
+
+### Input and Output Schemas
+
+Define schemas to validate agent inputs and outputs:
+
+```yaml
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: "Search query"
+    filters:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        category:
+          type: string
+  required: ["query"]
+
+output_schema:
+  type: object
+  properties:
+    results:
+      type: array
+      items:
+        type: object
+    total_count:
+      type: integer
+  required: ["results"]
+```
+
+### Agent Initialization and Cleanup
+
+Run custom code when your agent starts or stops:
+
+```yaml
+agent_init_function:
+  module: "my_package.lifecycle"
+  name: "initialize_agent"
+  config:
+    database_url: "${DATABASE_URL}"
+    api_key: "${API_KEY}"
+
+agent_cleanup_function:
+  module: "my_package.lifecycle"
+  name: "cleanup_agent_resources"
+```
+
+### Tool Output Configuration
+
+Control how tool outputs are handled:
+
+```yaml
+tool_output_save_threshold_bytes: 4000  # Save outputs > 4KB as artifacts
+tool_output_llm_return_max_bytes: 30000  # Max 30KB to LLM context
+```
+
+## Running Your Agent
+
+Start your agent using the SAM CLI:
+
+```bash
+sam run configs/agents/my_agent.yaml
+```
+
+The agent will:
+1. Connect to the Solace broker
+2. Initialize services and tools
+3. Publish its agent card for discovery
+4. Begin listening for tasks
+
+## Testing Your Agent
+
+<Steps>
+
+### Test via Gateway
+
+Use the Web UI or REST API gateway:
+
+```bash
+# Start the Web UI gateway in another terminal
+sam run configs/gateways/webui.yaml
+
+# Visit http://localhost:8000 and interact with your agent
+```
+
+### Test via CLI
+
+Use the SAM CLI to send direct requests:
+
+```bash
+sam agent invoke MyCustomAgent --message "Process data.csv"
+```
+
+### Test Agent Discovery
+
+Verify your agent is discoverable:
+
+```bash
+sam agent list
+```
+
+</Steps>
+
+## Troubleshooting
+
+<Warning>
+**Common Issues:**
+
+1. **Agent not discoverable**: Check that `agent_discovery.enabled: true` and agent card is publishing
+2. **Tools not working**: Verify tool module paths and that required packages are installed
+3. **Session not persisting**: Ensure `default_behavior: "PERSISTENT"` in session_service
+4. **Artifacts not shared**: Check that `artifact_scope: "namespace"` and all agents use the same namespace
+</Warning>
+
+### Debug Logging
+
+Increase log verbosity to troubleshoot:
+
+```yaml
+log:
+  stdout_log_level: DEBUG
+  log_file_level: DEBUG
+  log_file: agent_debug.log
+```
+
+### Health Checks
+
+Monitor agent health:
+
+```bash
+# View agent logs
+tail -f agent_debug.log
+
+# Check agent status
+sam agent status MyCustomAgent
+```
+
+## Best Practices
+
+<Tip>
+**Agent Design Tips:**
+
+1. **Single Responsibility**: Each agent should have a clear, focused purpose
+2. **Clear Instructions**: Write detailed, specific instructions for consistent behavior
+3. **Comprehensive Skills**: Define all capabilities in the agent card for proper discovery
+4. **Error Handling**: Include guidance in instructions for handling errors gracefully
+5. **Artifact Management**: Always create artifacts for outputs that users need to access
+6. **Status Updates**: Use status embeds to keep users informed of progress
+</Tip>
+
+## Next Steps
+
+- [Creating Custom Tools](/guides/creating-custom-tools) - Add specialized tools to your agents
+- [MCP Integration](/guides/mcp-integration) - Integrate Model Context Protocol servers
+- [Workflow Development](/guides/workflow-development) - Orchestrate multiple agents
+- [Building Gateways](/guides/building-gateways) - Create custom interfaces for your agents
+
+## Real-World Examples
+
+Check out these production-ready agent examples in the source:
+
+- `examples/agents/web_search_agent.yaml` - Web search and research capabilities
+- `examples/agents/research_agent.yaml` - Deep research workflows
+- `examples/agents/orchestrator_example.yaml` - Multi-agent orchestration

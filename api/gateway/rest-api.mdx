@@ -1,0 +1,584 @@
+---
+title: 'REST API Reference'
+description: 'Complete REST API documentation for Solace Agent Mesh gateways'
+icon: 'plug'
+---
+
+## Overview
+
+The REST API Gateway provides HTTP/HTTPS access to Solace Agent Mesh agents with support for:
+
+- Synchronous and asynchronous task execution
+- Server-Sent Events (SSE) for real-time streaming
+- File upload and download
+- Session management
+- Agent discovery
+
+## Base URL
+
+```
+http://localhost:8080/api/v1
+```
+
+All endpoints are prefixed with `/api/v1`.
+
+## Authentication
+
+### Development Mode
+
+When `enforce_authentication: false`:
+
+```bash
+curl http://localhost:8080/api/v1/agent-cards
+```
+
+No authentication required.
+
+### Production Mode
+
+When `enforce_authentication: true`, include bearer token:
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8080/api/v1/agent-cards
+```
+
+## Core Endpoints
+
+### Execute Task
+
+Execute a task on an agent asynchronously.
+
+<ParamField path="POST /tasks" type="endpoint">
+  Create and execute a new task.
+</ParamField>
+
+**Request Body:**
+
+```json
+{
+  "agentName": "FileSystemAgent",
+  "sessionId": "user123_session",
+  "message": {
+    "text": "List all files in the current directory"
+  },
+  "metadata": {
+    "priority": "high",
+    "tags": ["filesystem", "query"]
+  }
+}
+```
+
+<ParamField path="agentName" type="string" required>
+  Name of the agent to execute the task.
+</ParamField>
+
+<ParamField path="sessionId" type="string" required>
+  Session identifier for conversation history.
+</ParamField>
+
+<ParamField path="message" type="object" required>
+  Message to send to the agent.
+  
+  **Subfields:**
+  - `text` (string): Text message content
+  - `files` (array): Attached file artifacts
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Optional metadata for the task.
+</ParamField>
+
+**Response:**
+
+<ResponseField name="taskId" type="string">
+  Unique identifier for the created task.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Initial task status ("queued" or "running").
+</ResponseField>
+
+<ResponseField name="sseUrl" type="string">
+  URL to connect for streaming updates.
+</ResponseField>
+
+```json
+{
+  "taskId": "task_abc123",
+  "status": "running",
+  "sseUrl": "/api/v1/tasks/task_abc123/stream"
+}
+```
+
+### Stream Task Updates
+
+Connect to Server-Sent Events stream for real-time task updates.
+
+<ParamField path="GET /tasks/{taskId}/stream" type="endpoint">
+  Stream task execution updates via SSE.
+</ParamField>
+
+**SSE Event Types:**
+
+<ResponseField name="task.status" type="event">
+  Task status updates (queued, running, completed, failed).
+  
+  ```json
+  {
+    "taskId": "task_abc123",
+    "status": "running",
+    "timestamp": "2024-01-15T10:30:00Z"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="task.message" type="event">
+  Agent response messages.
+  
+  ```json
+  {
+    "taskId": "task_abc123",
+    "message": {
+      "text": "I found 5 files in the directory:",
+      "role": "agent"
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="artifact.created" type="event">
+  Artifact creation notifications.
+  
+  ```json
+  {
+    "taskId": "task_abc123",
+    "artifact": {
+      "filename": "file_list.txt",
+      "version": 1,
+      "mimeType": "text/plain",
+      "size": 1024
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="artifact.progress" type="event">
+  Artifact upload/download progress.
+  
+  ```json
+  {
+    "taskId": "task_abc123",
+    "filename": "large_file.zip",
+    "status": "in-progress",
+    "bytesTransferred": 512000,
+    "totalBytes": 1048576
+  }
+  ```
+</ResponseField>
+
+**Example (JavaScript):**
+
+```javascript
+const eventSource = new EventSource(
+  `http://localhost:8080/api/v1/tasks/task_abc123/stream`
+);
+
+eventSource.addEventListener('task.message', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Agent response:', data.message.text);
+});
+
+eventSource.addEventListener('task.status', (event) => {
+  const data = JSON.parse(event.data);
+  if (data.status === 'completed') {
+    console.log('Task completed!');
+    eventSource.close();
+  }
+});
+```
+
+### Get Task Status
+
+Retrieve current task status and results.
+
+<ParamField path="GET /tasks/{taskId}" type="endpoint">
+  Get task information and final results.
+</ParamField>
+
+**Response:**
+
+<ResponseField name="taskId" type="string">
+  Task identifier.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: "queued", "running", "completed", "failed", "cancelled".
+</ResponseField>
+
+<ResponseField name="result" type="object">
+  Task results (when status is "completed").
+</ResponseField>
+
+<ResponseField name="error" type="object">
+  Error details (when status is "failed").
+</ResponseField>
+
+```json
+{
+  "taskId": "task_abc123",
+  "status": "completed",
+  "result": {
+    "message": {
+      "text": "Task completed successfully."
+    },
+    "artifacts": [
+      {
+        "filename": "result.json",
+        "version": 1
+      }
+    ]
+  },
+  "startedAt": "2024-01-15T10:30:00Z",
+  "completedAt": "2024-01-15T10:30:15Z"
+}
+```
+
+### Cancel Task
+
+Cancel a running or queued task.
+
+<ParamField path="DELETE /tasks/{taskId}" type="endpoint">
+  Cancel task execution.
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "taskId": "task_abc123",
+  "status": "cancelled",
+  "message": "Task cancelled successfully"
+}
+```
+
+## Session Management
+
+### List Sessions
+
+<ParamField path="GET /sessions" type="endpoint">
+  List all sessions for the authenticated user.
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField path="limit" type="integer">
+  Maximum number of sessions to return (default: 50).
+</ParamField>
+
+<ParamField path="offset" type="integer">
+  Pagination offset (default: 0).
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "sessions": [
+    {
+      "sessionId": "user123_session",
+      "agentName": "FileSystemAgent",
+      "createdAt": "2024-01-15T10:00:00Z",
+      "lastActivityAt": "2024-01-15T10:30:00Z",
+      "messageCount": 5
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Get Session History
+
+<ParamField path="GET /sessions/{sessionId}" type="endpoint">
+  Get conversation history for a session.
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "sessionId": "user123_session",
+  "agentName": "FileSystemAgent",
+  "messages": [
+    {
+      "role": "user",
+      "text": "List all files",
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    {
+      "role": "agent",
+      "text": "I found 5 files...",
+      "timestamp": "2024-01-15T10:30:05Z"
+    }
+  ]
+}
+```
+
+### Delete Session
+
+<ParamField path="DELETE /sessions/{sessionId}" type="endpoint">
+  Delete a session and its history.
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "message": "Session deleted successfully"
+}
+```
+
+## Agent Discovery
+
+### List Available Agents
+
+<ParamField path="GET /agent-cards" type="endpoint">
+  Discover available agents in the mesh.
+</ParamField>
+
+**Response:**
+
+<ResponseField name="agents" type="array">
+  List of available agents with capabilities.
+</ResponseField>
+
+```json
+{
+  "agents": [
+    {
+      "agentName": "FileSystemAgent",
+      "displayName": "File System",
+      "description": "Interacts with the local filesystem",
+      "capabilities": {
+        "inputModes": ["text"],
+        "outputModes": ["text", "file"],
+        "supportsStreaming": true
+      },
+      "skills": [
+        {
+          "name": "read_files",
+          "description": "Read file contents"
+        },
+        {
+          "name": "write_files",
+          "description": "Create or update files"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Artifact Management
+
+### Upload Artifact
+
+<ParamField path="POST /artifacts" type="endpoint">
+  Upload a file as an artifact.
+</ParamField>
+
+**Request (multipart/form-data):**
+
+```bash
+curl -X POST \
+  -F "file=@document.pdf" \
+  -F "description=Important document" \
+  -F "sessionId=user123_session" \
+  http://localhost:8080/api/v1/artifacts
+```
+
+**Response:**
+
+```json
+{
+  "filename": "document.pdf",
+  "version": 1,
+  "mimeType": "application/pdf",
+  "size": 524288,
+  "description": "Important document",
+  "uploadedAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### Download Artifact
+
+<ParamField path="GET /artifacts/{filename}" type="endpoint">
+  Download an artifact file.
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField path="version" type="integer">
+  Specific version to download (default: latest).
+</ParamField>
+
+<ParamField path="sessionId" type="string">
+  Session identifier (required if artifact scope is "session").
+</ParamField>
+
+**Response:**
+
+Binary file download with appropriate Content-Type header.
+
+### List Artifacts
+
+<ParamField path="GET /artifacts" type="endpoint">
+  List available artifacts.
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField path="sessionId" type="string">
+  Filter by session.
+</ParamField>
+
+<ParamField path="pattern" type="string">
+  Glob pattern to filter filenames.
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "artifacts": [
+    {
+      "filename": "document.pdf",
+      "versions": [1],
+      "latestVersion": 1,
+      "mimeType": "application/pdf",
+      "size": 524288,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Agent 'UnknownAgent' not found",
+    "details": {
+      "agentName": "UnknownAgent"
+    }
+  }
+}
+```
+
+### Error Codes
+
+<ResponseField name="INVALID_REQUEST" type="error">
+  Malformed request or invalid parameters.
+</ResponseField>
+
+<ResponseField name="AUTHENTICATION_REQUIRED" type="error">
+  Missing or invalid authentication token.
+</ResponseField>
+
+<ResponseField name="AGENT_NOT_FOUND" type="error">
+  Specified agent does not exist.
+</ResponseField>
+
+<ResponseField name="SESSION_NOT_FOUND" type="error">
+  Specified session does not exist.
+</ResponseField>
+
+<ResponseField name="TASK_NOT_FOUND" type="error">
+  Specified task does not exist.
+</ResponseField>
+
+<ResponseField name="ARTIFACT_NOT_FOUND" type="error">
+  Specified artifact does not exist.
+</ResponseField>
+
+<ResponseField name="INTERNAL_ERROR" type="error">
+  Server-side error.
+</ResponseField>
+
+## Rate Limiting
+
+Default rate limits:
+
+- 100 requests per minute per IP
+- 1000 requests per hour per user
+
+Rate limit headers:
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1642248000
+```
+
+## Complete Example
+
+### Execute Task with Streaming
+
+```javascript
+// 1. Create task
+const createResponse = await fetch('http://localhost:8080/api/v1/tasks', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    agentName: 'FileSystemAgent',
+    sessionId: 'user123_session',
+    message: {
+      text: 'List all files and create a summary report',
+    },
+  }),
+});
+
+const { taskId, sseUrl } = await createResponse.json();
+
+// 2. Connect to SSE stream
+const eventSource = new EventSource(
+  `http://localhost:8080${sseUrl}`
+);
+
+// 3. Handle streaming updates
+eventSource.addEventListener('task.message', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Agent:', data.message.text);
+});
+
+eventSource.addEventListener('artifact.created', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Artifact created:', data.artifact.filename);
+});
+
+eventSource.addEventListener('task.status', (event) => {
+  const data = JSON.parse(event.data);
+  if (data.status === 'completed') {
+    console.log('Task completed!');
+    eventSource.close();
+    
+    // 4. Download artifact
+    window.location.href = 
+      `http://localhost:8080/api/v1/artifacts/summary_report.md`;
+  }
+});
+```
+
+## See Also
+
+- [Gateway Configuration](/api/gateway/configuration) - Configure REST gateway
+- [WebSocket Reference](/api/gateway/websocket) - WebSocket protocol
+- [Agent Configuration](/api/agent/configuration) - Configure agents

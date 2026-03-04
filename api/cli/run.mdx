@@ -1,0 +1,200 @@
+---
+title: 'sam run'
+description: 'Run the Solace Agent Mesh application'
+---
+
+## Overview
+
+The `sam run` command starts the Solace Agent Mesh application using specified or discovered YAML configuration files.
+
+## Syntax
+
+```bash
+sam run [FILES...] [OPTIONS]
+```
+
+## Description
+
+Runs the Solace application with the specified YAML configuration files. When a directory is provided, it is recursively searched for YAML files (`.yaml`, `.yml`). If no files are specified, the command discovers configuration files automatically.
+
+The command:
+1. Loads environment variables from `.env` file (unless `--system-env` is used)
+2. Discovers and validates YAML configuration files
+3. Initializes the Solace AI Connector
+4. Starts all configured components (agents, gateways, etc.)
+
+## Arguments
+
+<ParamField path="FILES" type="path[]" default="[]">
+  Paths to individual YAML files or directories containing YAML files. Multiple paths can be specified.
+  
+  - Individual files: `agent.yaml gateway.yaml`
+  - Directories: `configs/` (recursively searches for YAML files)
+  - Mixed: `configs/agents/ my-gateway.yaml`
+  
+  If not specified, automatically discovers configuration files.
+</ParamField>
+
+## Options
+
+<ParamField path="-s, --skip" type="string[]" default="[]">
+  File name(s) to exclude from the run. Can be used multiple times.
+  
+  Example: `-s agent1.yaml -s agent2.yaml`
+</ParamField>
+
+<ParamField path="-u, --system-env" type="boolean" default="false">
+  Use system environment variables only; do not load `.env` file.
+  
+  When enabled, the command will not search for or load a `.env` file, relying solely on environment variables already set in the system.
+</ParamField>
+
+## Examples
+
+### Run with Auto-Discovery
+
+```bash
+sam run
+```
+
+Automatically discovers and runs all YAML configuration files.
+
+### Run Specific Files
+
+```bash
+sam run configs/agents/orchestrator.yaml configs/gateways/webui.yaml
+```
+
+Runs only the specified configuration files.
+
+### Run All Files in Directory
+
+```bash
+sam run configs/
+```
+
+Recursively finds and runs all YAML files in the `configs/` directory.
+
+### Exclude Specific Files
+
+```bash
+sam run configs/ -s test_agent.yaml -s experimental_gateway.yaml
+```
+
+Runs all YAML files in `configs/` except for `test_agent.yaml` and `experimental_gateway.yaml`.
+
+### Use System Environment Only
+
+```bash
+sam run --system-env
+```
+
+Runs without loading `.env` file, using only system environment variables.
+
+### Run Specific Directory with Exclusions
+
+```bash
+sam run configs/agents/ configs/gateways/production.yaml -s dev_agent.yaml
+```
+
+Runs all agents from the directory plus the production gateway, excluding the dev agent.
+
+## Configuration File Discovery
+
+The `run` command uses the following logic to discover configuration files:
+
+1. If specific files/directories are provided:
+   - Files are added directly
+   - Directories are recursively searched for `.yaml` and `.yml` files
+2. Files matching names in `--skip` are excluded
+3. The final list is passed to the Solace AI Connector
+
+## Environment Variables
+
+The command loads environment variables from `.env` file in the following order:
+
+1. Searches for `.env` in current directory
+2. Searches parent directories up to root
+3. Loads variables with `override=True` (overwrites existing)
+
+**Special handling:**
+- `LOGGING_CONFIG_PATH`: If relative path, converted to absolute path
+
+## Output
+
+**Successful startup:**
+
+```
+2024-03-04 10:30:15 - INFO - Loaded environment variables from: /path/to/project/.env
+2024-03-04 10:30:15 - INFO - Final list of configuration files to run:
+  - /path/to/project/configs/agents/orchestrator_agent.yaml
+  - /path/to/project/configs/gateways/webui_gateway_config.yaml
+2024-03-04 10:30:16 - INFO - Starting Solace AI Connector...
+[Component initialization logs]
+2024-03-04 10:30:20 - INFO - All components started successfully
+```
+
+**No configuration files:**
+
+```
+WARNING - No configuration files to run after filtering. Exiting.
+```
+
+**Missing .env file:**
+
+```
+WARNING - Warning: .env file not found in the current directory or parent directories. 
+Proceeding without loading .env.
+```
+
+## Exit Codes
+
+- `0`: Successful execution
+- `1`: Error (configuration file not found, startup failure, etc.)
+- Other: Propagated from Solace AI Connector
+
+## Implementation Details
+
+The command is implemented in `/home/daytona/workspace/source/cli/commands/run_cmd.py:40-147` and:
+
+1. Sets up logging configuration
+2. Loads environment from `.env` file (if not using `--system-env`)
+3. Runs enterprise initialization hooks
+4. Discovers configuration files using `discover_config_files()` utility
+5. Delegates to `solace_ai_connector.main` for component execution
+
+## Notes
+
+- The command blocks until interrupted (Ctrl+C) or all components exit
+- Log output is controlled by `LOGGING_CONFIG_PATH` environment variable
+- Configuration files must be valid YAML and follow SAM schema
+- The `.env` file supports variable substitution in YAML configs using `${VAR_NAME}` syntax
+
+## Troubleshooting
+
+### Error: No configuration files found
+
+**Cause:** No YAML files in specified paths or all files excluded via `--skip`
+
+**Solution:** Verify paths and check file extensions (`.yaml` or `.yml`)
+
+### Error: .env file not found
+
+**Cause:** Running from directory without `.env` file
+
+**Solution:** 
+- Run from project root, or
+- Use `--system-env` flag, or  
+- Create `.env` file with required variables
+
+### Logging not configured
+
+**Cause:** `LOGGING_CONFIG_PATH` not set or file not found
+
+**Solution:** Set `LOGGING_CONFIG_PATH` in `.env` or use default logging
+
+## See Also
+
+- [sam init](/api/cli/init) - Initialize a new project
+- [sam task run](/api/cli/task) - Run SAM and execute a task in one command
+- [sam add](/api/cli/add) - Add new components to your project

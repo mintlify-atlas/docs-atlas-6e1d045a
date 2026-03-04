@@ -1,0 +1,629 @@
+---
+title: Platform Service
+description: Backend microservice for management operations in Solace Agent Mesh
+---
+
+The Platform Service is a backend microservice that provides REST APIs for configuration management, agent deployment, and system administration in Solace Agent Mesh. It operates independently from other components and can be scaled separately.
+
+## Overview
+
+The Platform Service is built on FastAPI and provides:
+
+- **RESTful API** for management operations
+- **Database persistence** for configuration data
+- **OAuth2 authentication** for secure access
+- **RBAC authorization** for fine-grained permissions
+- **Agent discovery integration** via Solace Event Mesh
+
+<Info>
+The Platform Service is optional for open-source deployments but required when using Agent Mesh Enterprise features.
+</Info>
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph External["External Clients"]
+        WebUI[WebUI Gateway]
+        CLI[CLI Tools]
+        API[API Clients]
+    end
+    
+    subgraph Platform["Platform Service"]
+        FastAPI[FastAPI Server]
+        Auth[OAuth2 Middleware]
+        RBAC[RBAC Engine]
+        Routers[API Routers]
+    end
+    
+    subgraph Storage["Storage Layer"]
+        DB[(PostgreSQL/MySQL/SQLite)]
+    end
+    
+    subgraph Mesh["Event Mesh"]
+        Broker[Solace Broker]
+    end
+    
+    External --> FastAPI
+    FastAPI --> Auth
+    Auth --> RBAC
+    RBAC --> Routers
+    Routers --> DB
+    Platform --> Broker
+    
+    style Platform fill:#00C895
+    style Storage fill:#E8E8E8
+    style Mesh fill:#FFF7C2
+```
+
+## Configuration
+
+The Platform Service is configured through a YAML file:
+
+```yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: platform_service.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: platform_service_app
+    app_base_path: .
+    app_module: solace_agent_mesh.services.platform.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      # Namespace for agent discovery
+      namespace: ${NAMESPACE}
+      
+      # Database configuration
+      database_url: ${PLATFORM_DATABASE_URL}
+      
+      # FastAPI server settings
+      fastapi_host: ${PLATFORM_HOST, 127.0.0.1}
+      fastapi_port: ${PLATFORM_PORT, 8001}
+      
+      # Optional: HTTPS configuration
+      fastapi_https_port: ${PLATFORM_HTTPS_PORT, 8444}
+      ssl_keyfile: ${SSL_KEYFILE}
+      ssl_certfile: ${SSL_CERTFILE}
+      ssl_keyfile_password: ${SSL_KEYFILE_PASSWORD}
+      
+      # CORS configuration
+      cors_allowed_origins:
+        - "http://localhost:8000"
+        - "https://app.example.com"
+      cors_allowed_origin_regex: "https?://(localhost|127\\.0\\.0\\.1):\\\\d+"
+      
+      # Authentication (Enterprise)
+      external_auth_service_url: ${EXTERNAL_AUTH_SERVICE_URL}
+```
+
+## Configuration Parameters
+
+### Core Settings
+
+<ParamField path="namespace" type="string" required>
+  The A2A namespace for agent discovery and communication.
+</ParamField>
+
+<ParamField path="database_url" type="string" required>
+  Database connection string. Supports:
+  - **PostgreSQL**: `postgresql://user:pass@host:5432/dbname`
+  - **MySQL**: `mysql://user:pass@host:3306/dbname`
+  - **SQLite**: `sqlite:///platform.db`
+</ParamField>
+
+### Server Settings
+
+<ParamField path="fastapi_host" type="string" default="127.0.0.1">
+  Host address for the FastAPI server. Use `0.0.0.0` to accept connections from all interfaces.
+</ParamField>
+
+<ParamField path="fastapi_port" type="integer" default="8001">
+  Port for HTTP connections.
+</ParamField>
+
+<ParamField path="fastapi_https_port" type="integer" default="8444">
+  Port for HTTPS connections (when SSL is enabled).
+</ParamField>
+
+### SSL Configuration
+
+<ParamField path="ssl_keyfile" type="string">
+  Path to SSL private key file (PEM format).
+</ParamField>
+
+<ParamField path="ssl_certfile" type="string">
+  Path to SSL certificate file (PEM format).
+</ParamField>
+
+<ParamField path="ssl_keyfile_password" type="string">
+  Password for encrypted private key (if applicable).
+</ParamField>
+
+### CORS Settings
+
+<ParamField path="cors_allowed_origins" type="array" default="['*']">
+  List of allowed origins for CORS requests:
+  ```yaml
+  cors_allowed_origins:
+    - "http://localhost:8000"
+    - "https://app.example.com"
+  ```
+</ParamField>
+
+<ParamField path="cors_allowed_origin_regex" type="string">
+  Regex pattern for dynamic origin matching:
+  ```yaml
+  cors_allowed_origin_regex: "https?://(localhost|127\\.0\\.0\\.1):\\\\d+"
+  ```
+</ParamField>
+
+### Authentication (Enterprise)
+
+<ParamField path="external_auth_service_url" type="string">
+  URL of the OAuth2 authentication service for token validation.
+</ParamField>
+
+<ParamField path="enforce_authentication" type="boolean" default="true">
+  Whether to enforce authentication. Set to `false` for development only.
+</ParamField>
+
+<ParamField path="default_user_identity" type="string" default="sam_dev_user">
+  Default user identity when authentication is disabled (development only).
+</ParamField>
+
+## Running the Platform Service
+
+### Initialize Configuration
+
+The `sam init --gui` command automatically creates a Platform Service configuration:
+
+```bash
+sam init --gui
+```
+
+When prompted to enable the WebUI Gateway, select **Yes**. This generates `configs/services/platform.yaml`.
+
+### Start the Service
+
+```bash
+# Run with default configuration
+sam run configs/services/platform.yaml
+
+# Run with environment variables
+export PLATFORM_DATABASE_URL="postgresql://user:pass@localhost:5432/platform"
+export NAMESPACE="myorg/production"
+sam run configs/services/platform.yaml
+```
+
+The service starts on port **8001** by default.
+
+### Verify Service Health
+
+```bash
+curl http://localhost:8001/health
+```
+
+Expected response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-03-04T12:00:00Z"
+}
+```
+
+## API Endpoints
+
+The Platform Service exposes the following API groups:
+
+### Health Check
+
+```http
+GET /health
+```
+
+Returns service health status. No authentication required.
+
+### Agent Management (Enterprise)
+
+```http
+GET    /api/v1/agents           # List agents
+POST   /api/v1/agents           # Create agent
+GET    /api/v1/agents/{id}      # Get agent details
+PUT    /api/v1/agents/{id}      # Update agent
+DELETE /api/v1/agents/{id}      # Delete agent
+```
+
+### Connector Management (Enterprise)
+
+```http
+GET    /api/v1/connectors       # List database connectors
+POST   /api/v1/connectors       # Create connector
+GET    /api/v1/connectors/{id}  # Get connector details
+PUT    /api/v1/connectors/{id}  # Update connector
+DELETE /api/v1/connectors/{id}  # Delete connector
+```
+
+### Deployment Management (Enterprise)
+
+```http
+GET    /api/v1/deployments      # List deployments
+POST   /api/v1/deployments      # Create deployment
+GET    /api/v1/deployments/{id} # Get deployment status
+DELETE /api/v1/deployments/{id} # Stop deployment
+```
+
+<Info>
+Enterprise endpoints require valid OAuth2 bearer tokens and appropriate RBAC permissions.
+</Info>
+
+## Authentication and Authorization
+
+The Platform Service uses a shared authentication model with the WebUI Gateway:
+
+### OAuth2 Token Validation
+
+All authenticated requests require a bearer token:
+
+```http
+GET /api/v1/agents HTTP/1.1
+Host: localhost:8001
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+Tokens are validated against the `external_auth_service_url`.
+
+### RBAC Configuration
+
+Role-based access control is configured via the `SAM_AUTHORIZATION_CONFIG` environment variable:
+
+```bash
+export SAM_AUTHORIZATION_CONFIG=/path/to/rbac_config.yaml
+```
+
+Example RBAC configuration:
+
+```yaml
+roles:
+  - name: admin
+    permissions:
+      - agents:*
+      - connectors:*
+      - deployments:*
+  
+  - name: developer
+    permissions:
+      - agents:read
+      - agents:write
+      - connectors:read
+  
+  - name: viewer
+    permissions:
+      - agents:read
+      - connectors:read
+
+user_assignments:
+  alice@example.com:
+    roles: [admin]
+  bob@example.com:
+    roles: [developer]
+  viewer@example.com:
+    roles: [viewer]
+```
+
+<Warning>
+If `SAM_AUTHORIZATION_CONFIG` is not set, the Platform Service defaults to **denying all access**. Both the Platform Service and WebUI Gateway must use the same RBAC configuration.
+</Warning>
+
+For detailed authentication setup, see [Platform Service Authentication](/enterprise/authentication).
+
+## Database Setup
+
+### PostgreSQL
+
+```bash
+# Create database
+createb platform_db
+
+# Set connection string
+export PLATFORM_DATABASE_URL="postgresql://user:pass@localhost:5432/platform_db"
+```
+
+### MySQL
+
+```bash
+# Create database
+mysql -u root -p -e "CREATE DATABASE platform_db;"
+
+# Set connection string
+export PLATFORM_DATABASE_URL="mysql://user:pass@localhost:3306/platform_db"
+```
+
+### SQLite (Development)
+
+```bash
+# Use file-based database
+export PLATFORM_DATABASE_URL="sqlite:///platform.db"
+```
+
+<Info>
+The Platform Service automatically creates required tables on first startup using Alembic migrations.
+</Info>
+
+## Agent Discovery Integration
+
+The Platform Service subscribes to agent discovery messages on the event mesh:
+
+```
+{namespace}/a2a/v1/discovery/agentcards
+```
+
+This enables:
+- Real-time agent availability tracking
+- Capability-based agent lookup
+- Health monitoring for deployed agents
+
+## Example Deployment
+
+<Accordion title="Production Configuration">
+```yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: /var/log/platform_service.log
+
+!include /etc/sam/shared_config.yaml
+
+apps:
+  - name: platform_service_app
+    app_base_path: .
+    app_module: solace_agent_mesh.services.platform.app
+    
+    broker:
+      broker_url: tcps://broker.example.com:55443
+      broker_username: ${SOLACE_USERNAME}
+      broker_password: ${SOLACE_PASSWORD}
+      broker_vpn: production
+    
+    app_config:
+      namespace: "myorg/production"
+      
+      # PostgreSQL database
+      database_url: "postgresql://platform:${DB_PASSWORD}@db.example.com:5432/platform"
+      
+      # Public-facing HTTPS
+      fastapi_host: "0.0.0.0"
+      fastapi_https_port: 443
+      ssl_keyfile: "/etc/ssl/private/platform.key"
+      ssl_certfile: "/etc/ssl/certs/platform.crt"
+      
+      # CORS for web applications
+      cors_allowed_origins:
+        - "https://app.example.com"
+        - "https://admin.example.com"
+      
+      # OAuth2 authentication
+      external_auth_service_url: "https://auth.example.com"
+      enforce_authentication: true
+```
+</Accordion>
+
+<Accordion title="Development Configuration">
+```yaml
+log:
+  stdout_log_level: DEBUG
+  log_file_level: DEBUG
+  log_file: platform_dev.log
+
+!include shared_config.yaml
+
+apps:
+  - name: platform_service_app
+    app_base_path: .
+    app_module: solace_agent_mesh.services.platform.app
+    
+    broker:
+      broker_url: ws://localhost:8008
+      broker_username: default
+      broker_password: default
+      broker_vpn: default
+    
+    app_config:
+      namespace: "dev/local"
+      
+      # SQLite for development
+      database_url: "sqlite:///platform_dev.db"
+      
+      # Local HTTP only
+      fastapi_host: "127.0.0.1"
+      fastapi_port: 8001
+      
+      # Permissive CORS for local development
+      cors_allowed_origin_regex: "https?://(localhost|127\\.0\\.0\\.1):\\\\d+"
+      
+      # No authentication in dev
+      enforce_authentication: false
+      default_user_identity: "dev_user"
+```
+</Accordion>
+
+## Docker Deployment
+
+Example `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  platform-service:
+    image: solace-agent-mesh:latest
+    command: sam run configs/services/platform.yaml
+    ports:
+      - "8001:8001"
+    environment:
+      - NAMESPACE=myorg/production
+      - PLATFORM_DATABASE_URL=postgresql://platform:${DB_PASSWORD}@postgres:5432/platform
+      - SOLACE_BROKER_URL=tcps://broker.example.com:55443
+      - SOLACE_BROKER_USERNAME=${SOLACE_USERNAME}
+      - SOLACE_BROKER_PASSWORD=${SOLACE_PASSWORD}
+      - SOLACE_BROKER_VPN=production
+      - EXTERNAL_AUTH_SERVICE_URL=https://auth.example.com
+    volumes:
+      - ./configs:/app/configs
+      - ./ssl:/etc/ssl/private
+    depends_on:
+      - postgres
+  
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=platform
+      - POSTGRES_USER=platform
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Service won't start">
+    Check:
+    - Database is accessible and connection string is correct
+    - Port 8001 is not already in use
+    - Broker connection parameters are valid
+    - All required environment variables are set
+    
+    View logs:
+    ```bash
+    tail -f platform_service.log
+    ```
+  </Accordion>
+  
+  <Accordion title="Authentication failures">
+    Check:
+    - `external_auth_service_url` is correct and reachable
+    - OAuth2 tokens are valid and not expired
+    - `SAM_AUTHORIZATION_CONFIG` environment variable is set
+    - RBAC configuration is loaded correctly
+    
+    Test authentication:
+    ```bash
+    curl -H "Authorization: Bearer ${TOKEN}" http://localhost:8001/api/v1/agents
+    ```
+  </Accordion>
+  
+  <Accordion title="CORS errors in browser">
+    Check:
+    - Origin is included in `cors_allowed_origins`
+    - Origin matches `cors_allowed_origin_regex` (if using regex)
+    - Protocol (http/https) matches configuration
+    
+    For development, use permissive regex:
+    ```yaml
+    cors_allowed_origin_regex: "https?://(localhost|127\\.0\\.0\\.1):\\\\d+"
+    ```
+  </Accordion>
+  
+  <Accordion title="Database migration errors">
+    Check:
+    - Database user has CREATE TABLE permissions
+    - Database exists and is accessible
+    - No conflicting schema versions
+    
+    Manual migration:
+    ```bash
+    # From the agent mesh installation directory
+    alembic -c src/solace_agent_mesh/services/platform/alembic.ini upgrade head
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tuning
+
+### Database Connection Pooling
+
+For PostgreSQL/MySQL, configure connection pooling:
+
+```python
+# In database_url, add pool parameters
+postgresql://user:pass@host:5432/db?pool_size=20&max_overflow=10
+```
+
+### Worker Processes
+
+For high-traffic deployments, run with multiple workers:
+
+```bash
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8001 \
+  solace_agent_mesh.services.platform.api.main:app
+```
+
+### Caching
+
+Enable Redis caching for agent discovery data:
+
+```yaml
+app_config:
+  cache_service:
+    type: redis
+    url: redis://localhost:6379/0
+    ttl_seconds: 300
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Production Deployment">
+    - Always use HTTPS with valid certificates
+    - Enable authentication (`enforce_authentication: true`)
+    - Use PostgreSQL or MySQL (not SQLite)
+    - Restrict `cors_allowed_origins` to known domains
+    - Use strong database passwords
+    - Keep OAuth2 tokens short-lived
+  </Accordion>
+  
+  <Accordion title="Network Security">
+    - Run behind a reverse proxy (nginx, Traefik)
+    - Use firewall rules to restrict database access
+    - Enable TLS for broker connections (`tcps://`)
+    - Consider API rate limiting
+  </Accordion>
+  
+  <Accordion title="RBAC Configuration">
+    - Follow principle of least privilege
+    - Regularly audit user permissions
+    - Use specific permissions (avoid wildcards)
+    - Separate admin and developer roles
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="WebUI Gateway" icon="window" href="/components/gateways">
+    Configure the web interface
+  </Card>
+  
+  <Card title="Authentication" icon="shield" href="/enterprise/authentication">
+    Set up OAuth2 and RBAC
+  </Card>
+  
+  <Card title="Agent Builder" icon="robot" href="/enterprise/agent-builder">
+    Use the visual agent builder
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="/deploying/kubernetes">
+    Deploy to Kubernetes
+  </Card>
+</CardGroup>

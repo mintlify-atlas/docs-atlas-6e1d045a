@@ -1,0 +1,736 @@
+---
+title: 'Task Invocation'
+description: 'How to invoke agents and workflows using the A2A protocol'
+icon: 'paper-plane'
+---
+
+## Overview
+
+Agents and workflows are invoked using the **A2A (Agent-to-Agent) protocol**, which provides a standardized way to create tasks, send messages, and receive responses.
+
+## Invocation Methods
+
+There are three primary invocation patterns:
+
+1. **Gateway to Agent**: Client invokes agent via gateway
+2. **Agent to Agent**: Agent delegates to another agent (peer invocation)
+3. **Workflow to Agent**: Workflow orchestrates agent invocations
+
+## Basic Task Invocation
+
+### Request: `tasks/send`
+
+Send a message to create or update a task:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req_abc123",
+  "method": "tasks/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Process this order"
+        },
+        {
+          "data": {
+            "order_id": "ORD-123",
+            "customer_id": "CUST-456",
+            "items": [
+              {"sku": "ITEM-1", "quantity": 2, "price": 50.00}
+            ]
+          }
+        }
+      ],
+      "message_id": "msg_xyz789",
+      "context_id": "session_456",
+      "kind": "message"
+    },
+    "metadata": {
+      "timeout_seconds": 300,
+      "priority": "high"
+    }
+  }
+}
+```
+
+**Topic:** `{namespace}/a2a/v1/agent/request/{agent_name}`
+
+**User Properties:**
+- `replyToTopic`: Where to send the response
+- `statusTopic`: Where to send status updates (optional)
+- `a2aUserConfig`: Additional routing/auth info (optional)
+
+### Response: Task Object
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req_abc123",
+  "result": {
+    "id": "task_abc123",
+    "context_id": "session_456",
+    "status": {
+      "state": "submitted",
+      "timestamp": "2024-03-04T12:00:00Z"
+    },
+    "kind": "task",
+    "metadata": {
+      "agent_name": "OrderProcessor"
+    }
+  }
+}
+```
+
+**Topic:** Value from `replyToTopic` user property
+
+## Streaming Task Invocation
+
+### Request: `tasks/send-streaming`
+
+For tasks that produce streaming updates:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "task_streaming_123",
+  "method": "tasks/send-streaming",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {"text": "Generate a long report"}
+      ],
+      "context_id": "session_456"
+    }
+  }
+}
+```
+
+### Response: Status Updates
+
+Agent sends periodic `TaskStatusUpdateEvent` messages:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "task_streaming_123",
+  "result": {
+    "task_id": "task_streaming_123",
+    "context_id": "session_456",
+    "status": {
+      "state": "working",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {"text": "Processing section 1 of 5..."}
+        ]
+      },
+      "timestamp": "2024-03-04T12:00:10Z"
+    },
+    "final": false,
+    "kind": "status-update"
+  }
+}
+```
+
+**Topic:** Value from `statusTopic` user property
+
+See [Streaming](/api/a2a/streaming) for details.
+
+## Workflow Invocation
+
+Workflows are invoked identically to agents (they register as agents):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "wf_req_123",
+  "method": "tasks/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "data": {
+            "order_id": "ORD-123",
+            "customer_id": "CUST-456",
+            "items": [
+              {"sku": "ITEM-1", "quantity": 2, "price": 50.00}
+            ],
+            "shipping_priority": "express"
+          }
+        }
+      ],
+      "context_id": "session_789"
+    }
+  }
+}
+```
+
+**Topic:** `{namespace}/a2a/v1/agent/request/OrderProcessingWorkflow`
+
+### Workflow Response
+
+Workflows return a `Task` with structured output:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "wf_req_123",
+  "result": {
+    "id": "wf_task_123",
+    "context_id": "session_789",
+    "status": {
+      "state": "completed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "data": {
+              "type": "structured_invocation_result",
+              "status": "success",
+              "output_artifact_ref": {
+                "name": "OrderProcessingWorkflow_a3f2_result.json",
+                "version": 1
+              }
+            }
+          },
+          {
+            "text": "Workflow completed successfully. Output artifact: OrderProcessingWorkflow_a3f2_result.json:v1"
+          }
+        ]
+      },
+      "timestamp": "2024-03-04T12:05:30Z"
+    },
+    "kind": "task",
+    "metadata": {
+      "workflow_name": "OrderProcessingWorkflow",
+      "output": {
+        "order_id": "ORD-123",
+        "status": "completed",
+        "final_total": 125.50,
+        "shipping_method": "express",
+        "tracking_id": "EXP-ORD-123"
+      },
+      "produced_artifacts": [
+        {"filename": "OrderProcessingWorkflow_a3f2_result.json", "version": 1}
+      ]
+    }
+  }
+}
+```
+
+## Structured Invocation Result
+
+Agents and workflows return a **StructuredInvocationResult** in the message data part:
+
+```json
+{
+  "type": "structured_invocation_result",
+  "status": "success",
+  "output_artifact_ref": {
+    "name": "validation_result.json",
+    "version": 1
+  }
+}
+```
+
+<ParamField path="type" type="string" required>
+  Always `"structured_invocation_result"`.
+</ParamField>
+
+<ParamField path="status" type="string" required>
+  Result status:
+  - `"success"`: Agent/workflow completed successfully
+  - `"error"`: Agent/workflow failed
+</ParamField>
+
+<ParamField path="output_artifact_ref" type="object">
+  Reference to output artifact (when status is `"success"`).
+  
+  Contains:
+  - `name`: Artifact filename
+  - `version`: Artifact version number
+</ParamField>
+
+<ParamField path="error_message" type="string">
+  Error description (when status is `"error"`).
+</ParamField>
+
+### Loading Artifact Output
+
+To access the actual output data, load the artifact:
+
+```python
+from solace_agent_mesh.agent.adk.services import initialize_artifact_service
+
+# Extract artifact ref from response
+data_parts = a2a.get_data_parts_from_message(response.status.message)
+for part in data_parts:
+    data = part.data
+    if data.get("type") == "structured_invocation_result":
+        artifact_ref = data["output_artifact_ref"]
+        
+        # Load artifact
+        artifact = await artifact_service.load_artifact(
+            app_name=agent_name,
+            user_id=user_id,
+            session_id=session_id,
+            filename=artifact_ref["name"],
+            version=artifact_ref["version"]
+        )
+        
+        # Parse output
+        output = json.loads(artifact.inline_data.data.decode("utf-8"))
+        print(output)
+```
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:968-982`
+
+## Peer Agent Invocation
+
+Agents can invoke other agents (delegation pattern):
+
+```python
+from solace_agent_mesh.common import a2a
+
+# Generate unique sub-task ID
+sub_task_id = f"subtask_{uuid.uuid4().hex[:8]}"
+
+# Create invocation request
+request = a2a.create_send_message_request(
+    message=a2a.create_user_message(
+        parts=[
+            a2a.create_data_part({
+                "order_id": "ORD-123",
+                "items": [...]
+            })
+        ],
+        task_id=sub_task_id,
+        context_id=parent_session_id
+    ),
+    task_id=sub_task_id
+)
+
+# Wrap in JSON-RPC
+rpc_request = a2a.create_success_response(
+    result=request,
+    request_id=sub_task_id
+)
+
+# Publish to target agent
+target_topic = a2a.get_agent_request_topic(
+    namespace=namespace,
+    agent_name="OrderValidator"
+)
+
+publish_a2a_message(
+    payload=rpc_request.model_dump(exclude_none=True),
+    topic=target_topic,
+    user_properties={
+        "replyToTopic": a2a.get_agent_response_topic(
+            namespace=namespace,
+            delegating_agent_name=self_agent_name,
+            sub_task_id=sub_task_id
+        ),
+        "statusTopic": a2a.get_peer_agent_status_topic(
+            namespace=namespace,
+            delegating_agent_name=self_agent_name,
+            sub_task_id=sub_task_id
+        )
+    }
+)
+```
+
+**Source:** `src/solace_agent_mesh/workflow/agent_caller.py`
+
+### Peer Response Handling
+
+The delegating agent receives the response:
+
+```
+Topic: {namespace}/a2a/v1/agent/response/{delegating_agent}/{sub_task_id}
+
+Payload:
+{
+  "jsonrpc": "2.0",
+  "id": "subtask_abc123",
+  "result": {
+    "id": "subtask_abc123",
+    "context_id": "session_456",
+    "status": {
+      "state": "completed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "data": {
+              "type": "structured_invocation_result",
+              "status": "success",
+              "output_artifact_ref": {
+                "name": "validation_result.json",
+                "version": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "agent_name": "OrderValidator"
+    }
+  }
+}
+```
+
+## Task Cancellation
+
+### Request: `tasks/cancel`
+
+Cancel a running task:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "cancel_req_123",
+  "method": "tasks/cancel",
+  "params": {
+    "id": "task_abc123"
+  }
+}
+```
+
+**Topic:** Same as original task request topic
+
+### Response: Cancellation Confirmation
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "cancel_req_123",
+  "result": {
+    "id": "task_abc123",
+    "context_id": "session_456",
+    "status": {
+      "state": "canceled",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {"text": "Task was cancelled"}
+        ]
+      },
+      "timestamp": "2024-03-04T12:10:00Z"
+    },
+    "kind": "task",
+    "metadata": {
+      "agent_name": "OrderProcessor"
+    }
+  }
+}
+```
+
+### Workflow Cancellation
+
+Workflows support **graceful cancellation**:
+
+1. Mark workflow as cancelled
+2. Send cancel requests to all active nodes
+3. Wait for nodes to complete (with timeout)
+4. Execute exit handlers (if `on_cancel` is defined)
+5. Return final cancelled status
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:820-882`
+
+## Timeout Handling
+
+Tasks have configurable timeouts:
+
+### Agent Timeout
+
+```python
+# In agent configuration
+agent_config:
+  default_timeout_seconds: 300  # 5 minutes
+```
+
+### Workflow Timeout
+
+```yaml
+# Workflow-level timeout
+app_config:
+  max_workflow_execution_time_seconds: 1800  # 30 minutes
+  default_node_timeout_seconds: 300          # Per node
+
+# Node-level timeout override
+nodes:
+  - id: slow_task
+    type: agent
+    agent_name: "SlowAgent"
+    timeout: "10m"  # 10 minutes
+```
+
+When timeout occurs:
+
+1. Timeout handler triggers
+2. Task marked as failed with timeout error
+3. Error response sent to caller
+4. Cleanup performed
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:370-413`
+
+## Session and Context Management
+
+### Session ID (`context_id`)
+
+The `context_id` field enables conversation continuity:
+
+- **Same session**: Multiple invocations share history and artifacts
+- **Different sessions**: Isolated conversations
+
+```json
+// First invocation
+{
+  "message": {
+    "context_id": "session_456",
+    "parts": [{"text": "Start processing order ORD-123"}]
+  }
+}
+
+// Follow-up invocation (same session)
+{
+  "message": {
+    "context_id": "session_456",  // Same session
+    "parts": [{"text": "What's the status?"}]
+  }
+}
+```
+
+Agent can access previous context via session service:
+
+```python
+session = await session_service.get_session(
+    app_name=agent_name,
+    user_id=user_id,
+    session_id=context_id
+)
+
+# Access history
+history = session.history
+
+# Access previous state
+previous_data = session.state.get("order_data")
+```
+
+### Artifact Scoping
+
+Artifacts are scoped by session:
+
+```python
+# Save artifact
+await artifact_service.save_artifact(
+    app_name=agent_name,
+    user_id=user_id,
+    session_id=context_id,  # Scoped to session
+    filename="result.json",
+    content=json.dumps(data).encode()
+)
+
+# Load artifact (within same session)
+artifact = await artifact_service.load_artifact(
+    app_name=agent_name,
+    user_id=user_id,
+    session_id=context_id,
+    filename="result.json"
+)
+```
+
+## Error Handling
+
+### Agent Error Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req_123",
+  "result": {
+    "id": "task_abc123",
+    "status": {
+      "state": "failed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "data": {
+              "type": "structured_invocation_result",
+              "status": "error",
+              "error_message": "Order validation failed: Invalid order ID"
+            }
+          },
+          {
+            "text": "Order validation failed: Invalid order ID"
+          }
+        ]
+      },
+      "timestamp": "2024-03-04T12:00:30Z"
+    },
+    "kind": "task",
+    "metadata": {"agent_name": "OrderValidator"}
+  }
+}
+```
+
+### Workflow Error Response
+
+Workflow failures include error context:
+
+```json
+{
+  "result": {
+    "status": {
+      "state": "failed",
+      "message": {
+        "parts": [
+          {
+            "data": {
+              "type": "structured_invocation_result",
+              "status": "error",
+              "error_message": "Node 'validate_order' failed: Invalid order ID"
+            }
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "workflow_name": "OrderProcessing",
+      "error_state": {
+        "failed_node_id": "validate_order",
+        "error_message": "Invalid order ID"
+      }
+    }
+  }
+}
+```
+
+## Complete Example: Gateway to Workflow
+
+### 1. Gateway Sends Request
+
+```
+Topic: production/a2a/v1/agent/request/OrderProcessingWorkflow
+
+User Properties:
+  replyToTopic: production/a2a/v1/gateway/response/gw_123/wf_task_456
+  statusTopic: production/a2a/v1/gateway/status/gw_123/wf_task_456
+
+Payload:
+{
+  "jsonrpc": "2.0",
+  "id": "req_789",
+  "method": "tasks/send-streaming",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "data": {
+            "order_id": "ORD-123",
+            "customer_id": "CUST-456",
+            "items": [{"sku": "ITEM-1", "quantity": 2, "price": 50.00}],
+            "shipping_priority": "express"
+          }
+        }
+      ],
+      "context_id": "session_789"
+    }
+  }
+}
+```
+
+### 2. Workflow Sends Status Updates
+
+```
+Topic: production/a2a/v1/gateway/status/gw_123/wf_task_456
+
+Payload:
+{
+  "jsonrpc": "2.0",
+  "id": "req_789",
+  "result": {
+    "task_id": "wf_task_456",
+    "status": {
+      "state": "working",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "data": {
+              "type": "workflow_node_execution_start",
+              "node_id": "validate_order",
+              "node_type": "agent",
+              "agent_name": "OrderValidator"
+            }
+          }
+        ]
+      }
+    },
+    "final": false,
+    "kind": "status-update"
+  }
+}
+```
+
+### 3. Workflow Sends Final Response
+
+```
+Topic: production/a2a/v1/gateway/response/gw_123/wf_task_456
+
+Payload:
+{
+  "jsonrpc": "2.0",
+  "id": "req_789",
+  "result": {
+    "id": "wf_task_456",
+    "status": {
+      "state": "completed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "data": {
+              "type": "structured_invocation_result",
+              "status": "success",
+              "output_artifact_ref": {
+                "name": "OrderProcessingWorkflow_a3f2_result.json",
+                "version": 1
+              }
+            }
+          },
+          {"text": "Workflow completed successfully"}
+        ]
+      }
+    },
+    "metadata": {
+      "workflow_name": "OrderProcessingWorkflow",
+      "output": {
+        "order_id": "ORD-123",
+        "status": "completed",
+        "final_total": 125.50
+      }
+    }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Message Format" icon="envelope" href="/api/a2a/message-format">
+    Complete A2A message format reference
+  </Card>
+  <Card title="Streaming" icon="stream" href="/api/a2a/streaming">
+    Understand streaming task updates
+  </Card>
+</CardGroup>

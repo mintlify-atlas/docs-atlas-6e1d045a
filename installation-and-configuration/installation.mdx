@@ -1,0 +1,225 @@
+---
+title: Installation
+description: Install Solace Agent Mesh and set up your development environment
+---
+
+## System Requirements
+
+Before installing Solace Agent Mesh, ensure your system meets the following requirements:
+
+- **Python 3.10.16 or higher**
+- **pip** (comes with Python)
+- **Operating System**: macOS, Linux, or Windows with [WSL](https://learn.microsoft.com/en-us/windows/wsl/)
+- **LLM API key** (OpenAI, Anthropic, or any LiteLLM-compatible provider)
+- **Optional**: Docker or Podman (for running a local Solace broker)
+
+## Installation Steps
+
+<Steps>
+  <Step title="Create a Project Directory">
+    Create a new directory for your Solace Agent Mesh project:
+
+    <CodeGroup>
+      ```bash macOS/Linux
+      mkdir my-sam-project && cd my-sam-project
+      ```
+
+      ```bash Windows (WSL)
+      mkdir my-sam-project && cd my-sam-project
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Set Up Python Virtual Environment">
+    Create and activate a Python virtual environment to isolate your project dependencies:
+
+    <CodeGroup>
+      ```bash macOS/Linux
+      python3 -m venv .venv
+      source .venv/bin/activate
+      ```
+
+      ```bash Windows (WSL)
+      python3 -m venv .venv
+      source .venv/bin/activate
+      ```
+    </CodeGroup>
+
+    <Note>
+      Your terminal prompt should change to indicate the virtual environment is active (e.g., `(.venv)`).
+    </Note>
+  </Step>
+
+  <Step title="Check for Existing Installation">
+    Before installing, check if you have an existing version of Solace Agent Mesh:
+
+    ```bash
+    sam -v
+    ```
+
+    If you have an earlier version installed, it's recommended to uninstall it and start fresh:
+
+    ```bash
+    pip3 uninstall solace-agent-mesh
+    ```
+
+    <Warning>
+      Upgrading from an older version using `pip3 install --upgrade` is not officially supported. Always start with a clean installation.
+    </Warning>
+  </Step>
+
+  <Step title="Install Solace Agent Mesh">
+    Install the latest version of Solace Agent Mesh using pip:
+
+    ```bash
+    pip3 install solace-agent-mesh
+    ```
+
+    This will install the `solace-agent-mesh` package and all its dependencies, including:
+    - Google Agent Development Kit (ADK)
+    - Solace AI Connector
+    - LiteLLM for LLM integration
+    - FastAPI and Uvicorn for web interfaces
+    - And many more (see [pyproject.toml](https://github.com/SolaceLabs/solace-agent-mesh/blob/main/pyproject.toml) for full list)
+  </Step>
+
+  <Step title="Verify Installation">
+    Verify that the installation was successful:
+
+    ```bash
+    sam --version
+    ```
+
+    You should see output similar to:
+    ```
+    solace-agent-mesh: 0.x.x
+    ```
+  </Step>
+
+  <Step title="Install Playwright (Required)">
+    Solace Agent Mesh uses Playwright for certain web-based features. After installation, run:
+
+    ```bash
+    playwright install
+    ```
+
+    This installs the necessary browser binaries for Playwright to function.
+  </Step>
+</Steps>
+
+## Optional Dependencies
+
+Solace Agent Mesh supports optional feature sets that can be installed separately:
+
+### Vertex AI Integration
+
+If you plan to use Google Cloud Vertex AI:
+
+```bash
+pip3 install solace-agent-mesh[vertex]
+```
+
+### Development and Testing
+
+For development work or running tests:
+
+```bash
+pip3 install solace-agent-mesh[test]
+```
+
+This includes:
+- pytest and testing utilities
+- Code quality tools (ruff)
+- Additional testing dependencies
+
+## Installation Using Hatch
+
+For developers working on Solace Agent Mesh itself, you can use Hatch for dependency management:
+
+```bash
+# Install hatch
+pip install hatch
+
+# Run tests with hatch
+hatch test
+
+# Run tests with specific Python version
+hatch test --python 3.10
+```
+
+## Verifying Your Installation
+
+After installation, verify that all components are working:
+
+<CodeGroup>
+  ```bash Check CLI
+  sam --help
+  ```
+
+  ```bash Check Version
+  sam -v
+  ```
+
+  ```bash List Available Commands
+  sam --help
+  ```
+</CodeGroup>
+
+You should see a list of available commands including:
+- `init` - Initialize a new project
+- `run` - Run your agent mesh
+- `add` - Add agents, gateways, or proxies
+- `plugin` - Manage plugins
+- `eval` - Run evaluations
+- `docs` - Access documentation
+
+## Next Steps
+
+Now that you have Solace Agent Mesh installed, you're ready to:
+
+1. [Initialize your first project](/installation-and-configuration/configuration)
+2. [Set up a Solace broker](/installation-and-configuration/broker-setup)
+3. [Configure environment variables](/installation-and-configuration/environment-variables)
+
+## Troubleshooting
+
+### Python Version Issues
+
+If you encounter Python version errors:
+
+```bash
+# Check your Python version
+python3 --version
+
+# Ensure it's 3.10.16 or higher
+```
+
+### Permission Errors
+
+If you get permission errors during installation:
+
+```bash
+# Use --user flag
+pip3 install --user solace-agent-mesh
+```
+
+### Virtual Environment Not Activating
+
+On some systems, you may need to use:
+
+```bash
+# Alternative activation method
+. .venv/bin/activate
+```
+
+### Playwright Installation Issues
+
+If Playwright fails to install browsers:
+
+```bash
+# Install with sudo (Linux)
+sudo playwright install
+
+# Or install specific browsers
+playwright install chromium
+```

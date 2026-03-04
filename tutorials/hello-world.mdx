@@ -1,0 +1,319 @@
+---
+title: "Hello World: Your First Agent"
+description: "Build your first AI agent with Solace Agent Mesh in under 10 minutes"
+---
+
+<Info>
+  **What you'll build**: A simple greeting agent that responds to user messages
+  
+  **Time**: ~10 minutes
+  
+  **Prerequisites**:
+  - Python 3.10.16+
+  - Solace Agent Mesh installed (`pip install solace-agent-mesh`)
+  - An LLM API key (OpenAI, Anthropic, or any compatible provider)
+</Info>
+
+## What you'll learn
+
+In this tutorial, you'll create your first AI agent and learn:
+- How to structure a basic agent configuration
+- How to run your agent locally
+- How to interact with your agent via the Web UI
+- Basic agent configuration options
+
+## Step-by-step guide
+
+<Steps>
+<Step title="Create a new project directory">
+
+First, create a dedicated directory for your agent mesh project:
+
+```bash
+mkdir hello-agent && cd hello-agent
+```
+
+Create and activate a Python virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+</Step>
+
+<Step title="Initialize the project">
+
+Use the SAM CLI to initialize a new project:
+
+```bash
+sam init --gui
+```
+
+This will open a web interface on port 5002. Follow these steps:
+
+1. **Select broker type**: Choose "Local" for development
+2. **Configure LLM**: Enter your API key and select your model
+3. **Choose components**: Select "Web UI Gateway" and "Orchestrator"
+4. **Complete setup**: Click "Initialize Project"
+
+<Tip>
+  If you prefer the command-line interface, you can skip `--gui` and follow the prompts in your terminal.
+</Tip>
+
+</Step>
+
+<Step title="Create your first agent">
+
+Create a new file called `hello_agent.yaml` in your project directory:
+
+```yaml hello_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: hello_agent.log
+
+# Include shared configuration
+!include shared_config.yaml
+
+apps:
+  - name: hello_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      # Agent identity
+      namespace: ${NAMESPACE}
+      agent_name: "HelloAgent"
+      display_name: "Hello World Agent"
+      
+      # LLM configuration
+      model: *planning_model
+      
+      # Agent instructions
+      instruction: |
+        You are a friendly greeting agent. Your job is to:
+        1. Greet users warmly
+        2. Ask how you can help them today
+        3. Respond enthusiastically to their messages
+        
+        Always be polite, helpful, and positive!
+      
+      # Enable streaming responses
+      supports_streaming: true
+      
+      # Session management
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      # Artifact storage
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+      
+      # Agent discovery card
+      agent_card:
+        description: "A friendly agent that greets users and provides basic assistance."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: "greeting"
+            name: "Friendly Greeting"
+            description: "Greets users and asks how to help"
+            examples:
+              - "Say hello"
+              - "Greet me"
+      
+      # Discovery settings
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+```
+
+<Note>
+  The `shared_config.yaml` file is created automatically by `sam init` and contains your broker connection details and LLM configuration.
+</Note>
+
+</Step>
+
+<Step title="Run your agent">
+
+Start your agent using the SAM CLI:
+
+```bash
+sam run
+```
+
+You should see output similar to:
+
+```
+[INFO] Starting Solace Agent Mesh...
+[INFO] Loading configuration from hello_agent.yaml
+[INFO] Connecting to broker at ws://localhost:8008
+[INFO] HelloAgent started successfully
+[INFO] Web UI available at http://localhost:8000
+```
+
+<Tip>
+  The default Web UI runs on port 8000. If this port is in use, you can change it in your gateway configuration.
+</Tip>
+
+</Step>
+
+<Step title="Test your agent">
+
+Open your browser and navigate to:
+
+```
+http://localhost:8000
+```
+
+You should see the Web UI interface. Try sending these messages:
+
+1. **"Hello!"** - Your agent should greet you warmly
+2. **"What can you do?"** - The agent should explain its capabilities
+3. **"Tell me a joke"** - See how the agent responds
+
+<Frame>
+  <img src="/images/hello-agent-screenshot.png" alt="Hello Agent Web UI" />
+</Frame>
+
+</Step>
+</Steps>
+
+## Understanding the configuration
+
+Let's break down the key parts of your agent configuration:
+
+### Agent Identity
+
+```yaml
+agent_name: "HelloAgent"
+display_name: "Hello World Agent"
+namespace: ${NAMESPACE}
+```
+
+- **agent_name**: Unique identifier used for agent-to-agent communication
+- **display_name**: Human-friendly name shown in the UI
+- **namespace**: Isolates agents in different environments
+
+### Instructions
+
+```yaml
+instruction: |
+  You are a friendly greeting agent...
+```
+
+The instruction field is the "system prompt" that defines your agent's personality and behavior. Be specific and clear about what the agent should do.
+
+### Session Service
+
+```yaml
+session_service:
+  type: "memory"
+  default_behavior: "PERSISTENT"
+```
+
+- **type: "memory"**: Stores conversation history in memory (for development)
+- **default_behavior: "PERSISTENT"**: Maintains conversation context across messages
+
+For production, use `type: "sql"` with a database URL.
+
+### Agent Card
+
+The agent card is like a business card - it tells other agents and the orchestrator what your agent can do:
+
+```yaml
+agent_card:
+  description: "A friendly agent that greets users..."
+  skills:
+    - id: "greeting"
+      name: "Friendly Greeting"
+      description: "Greets users and asks how to help"
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="Add weather capabilities" icon="cloud-sun" href="/tutorials/weather-agent">
+  Build an agent that can fetch real-time weather data
+</Card>
+
+<Card title="Create a simple workflow" icon="diagram-project" href="/tutorials/simple-workflow">
+  Learn how to orchestrate multiple agents
+</Card>
+
+<Card title="Connect to databases" icon="database" href="/tutorials/sql-database">
+  Enable your agent to query SQL databases
+</Card>
+
+<Card title="Agent architecture" icon="book" href="/essentials/architecture">
+  Understand how SAM agents work under the hood
+</Card>
+
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Agent won't start - connection error">
+    **Problem**: Cannot connect to broker
+    
+    **Solution**: Ensure your `.env` file has the correct broker settings:
+    ```bash
+    SOLACE_BROKER_URL=ws://localhost:8008
+    SOLACE_BROKER_USERNAME=default
+    SOLACE_BROKER_PASSWORD=default
+    SOLACE_BROKER_VPN=default
+    ```
+    
+    If using `sam init --gui`, these are configured automatically.
+  </Accordion>
+
+  <Accordion title="LLM API errors">
+    **Problem**: "Invalid API key" or "Model not found"
+    
+    **Solution**: Check your LLM configuration in `shared_config.yaml`:
+    ```yaml
+    planning:
+      model: "gpt-4"  # or your preferred model
+      api_key: ${LLM_SERVICE_API_KEY}
+      api_base: ${LLM_SERVICE_ENDPOINT}
+    ```
+    
+    Ensure your `.env` file has valid credentials.
+  </Accordion>
+
+  <Accordion title="Web UI not loading">
+    **Problem**: Cannot access http://localhost:8000
+    
+    **Solution**: 
+    1. Check that the Web UI gateway is running in your configuration
+    2. Look for port conflicts in the logs
+    3. Try accessing http://127.0.0.1:8000 instead
+  </Accordion>
+
+  <Accordion title="Agent not responding">
+    **Problem**: Messages sent but no response
+    
+    **Solution**:
+    1. Check the logs in `hello_agent.log`
+    2. Verify the agent is properly registered (look for "HelloAgent started successfully")
+    3. Ensure `supports_streaming: true` is set if using the Web UI
+  </Accordion>
+</AccordionGroup>
+
+## Key concepts learned
+
+<Check>
+  - How to create and configure a basic agent
+  - Understanding agent identity and discovery
+  - Using the Web UI to interact with agents
+  - Basic troubleshooting techniques
+</Check>
+
+Congratulations! You've built your first Solace Agent Mesh agent. You're ready to move on to more advanced tutorials.

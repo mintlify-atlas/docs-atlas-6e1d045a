@@ -1,97 +1,238 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Solace Agent Mesh Documentation"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative bg-gradient-to-br from-[#03213B] via-[#024a5c] to-[#03213B] dark:from-[#03213B] dark:via-[#024a5c] dark:to-[#03213B] py-20 overflow-hidden">
+  <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-30"></div>
+  
+  <div className="relative max-w-6xl mx-auto px-6 sm:px-8">
+    <div className="text-center">
+      <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight">
+        Build Event-Driven
+        <br />
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00C895] to-[#C2F7FF]">
+          Multi-Agent AI Systems
+        </span>
+      </h1>
+      
+      <p className="text-xl sm:text-2xl text-gray-200 dark:text-gray-200 max-w-3xl mx-auto mb-10 leading-relaxed">
+        An open-source framework for building scalable, collaborative AI agents that communicate through the Solace Event Mesh
+      </p>
+      
+      <div className="flex flex-wrap gap-4 justify-center items-center">
+        <a 
+          href="/quickstart" 
+          className="inline-flex items-center px-8 py-4 bg-[#00C895] hover:bg-[#00b085] text-white font-semibold rounded-lg transition-colors shadow-lg hover:shadow-xl no-underline"
+        >
+          Get Started
+          <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+        </a>
+        <a 
+          href="/architecture" 
+          className="inline-flex items-center px-8 py-4 border-2 border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition-colors backdrop-blur-sm no-underline"
+        >
+          View Architecture
+        </a>
+        <a 
+          href="https://github.com/SolaceLabs/solace-agent-mesh" 
+          className="inline-flex items-center px-8 py-4 border-2 border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition-colors backdrop-blur-sm no-underline"
+        >
+          <svg className="mr-2 w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+          </svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+      Quick start
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Get Solace Agent Mesh running in just a few steps
+    </p>
+  </div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install Solace Agent Mesh">
+      Install the framework using pip in a Python virtual environment:
+      
+      ```bash
+      python3 -m venv .venv && source .venv/bin/activate
+      pip3 install solace-agent-mesh
+      ```
+    </Step>
+    
+    <Step title="Initialize your project">
+      Create a new project using the GUI initialization tool:
+      
+      ```bash
+      sam init --gui
+      ```
+      
+      This launches a configuration interface on port 5002 where you can set up your agents, gateways, and broker connection.
+    </Step>
+    
+    <Step title="Run your agent mesh">
+      Start the agent mesh system:
+      
+      ```bash
+      sam run
+      ```
+      
+      Access the Web UI at [http://localhost:8000](http://localhost:8000) to interact with your agents.
+    </Step>
+  </Steps>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+      Key features
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Everything you need to build production-ready multi-agent systems
+    </p>
+  </div>
 
-Design a docs site that looks great and empowers your users.
+  <CardGroup cols={2}>
+    <Card title="Event-Driven Architecture" icon="bolt" href="/architecture">
+      Agents communicate via Solace Event Mesh for true scalability, resilience, and decoupling
+    </Card>
+    <Card title="Agent Orchestration" icon="network-wired" href="/core-concepts/orchestrator">
+      Complex tasks automatically broken down and delegated across specialized agents
+    </Card>
+    <Card title="A2A Protocol" icon="arrows-left-right" href="/core-concepts/a2a-protocol">
+      Standardized agent-to-agent communication enables seamless collaboration
+    </Card>
+    <Card title="Flexible Gateways" icon="window" href="/core-concepts/gateways">
+      Integrate with REST API, Web UI, Slack, or build custom interfaces
+    </Card>
+    <Card title="Built-in Tools" icon="toolbox" href="/built-in-tools/overview">
+      Artifact management, data analysis, audio/image processing, and research tools
+    </Card>
+    <Card title="MCP Support" icon="plug" href="/guides/mcp-integration">
+      Integrate Model Context Protocol servers for extended capabilities
+    </Card>
+    <Card title="Workflow Engine" icon="diagram-project" href="/core-concepts/workflows">
+      Define complex workflows with sequential, parallel, map, switch, and loop patterns
+    </Card>
+    <Card title="Plugin System" icon="puzzle-piece" href="/components/plugins">
+      Extend the framework with custom agents, tools, and gateways
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+      Explore the documentation
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Find guides, tutorials, and API references to help you succeed
+    </p>
+  </div>
 
-## Create beautiful pages
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <a href="/introduction" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#00C895] dark:hover:border-[#00C895] overflow-hidden transition-colors no-underline bg-white dark:bg-[#1a1d27]">
+      <div className="p-6">
+        <div className="w-12 h-12 rounded-lg bg-[#00C895]/10 dark:bg-[#00C895]/20 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-[#00C895]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          Core Concepts
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Learn about agents, gateways, workflows, and the A2A protocol
+        </p>
+        <div className="flex items-center text-sm text-[#00C895] group-hover:text-[#00C895] font-medium">
+          Learn more
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
 
-Everything you need to create world-class documentation.
+    <a href="/guides/creating-custom-agents" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#00C895] dark:hover:border-[#00C895] overflow-hidden transition-colors no-underline bg-white dark:bg-[#1a1d27]">
+      <div className="p-6">
+        <div className="w-12 h-12 rounded-lg bg-[#00C895]/10 dark:bg-[#00C895]/20 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-[#00C895]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          Developer Guides
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Build custom agents, tools, and gateways for your use case
+        </p>
+        <div className="flex items-center text-sm text-[#00C895] group-hover:text-[#00C895] font-medium">
+          Start building
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    <a href="/api/cli/init" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#00C895] dark:hover:border-[#00C895] overflow-hidden transition-colors no-underline bg-white dark:bg-[#1a1d27]">
+      <div className="p-6">
+        <div className="w-12 h-12 rounded-lg bg-[#00C895]/10 dark:bg-[#00C895]/20 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-[#00C895]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          API Reference
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Complete reference for CLI commands, configuration, and APIs
+        </p>
+        <div className="flex items-center text-sm text-[#00C895] group-hover:text-[#00C895] font-medium">
+          View reference
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-br from-[#03213B] to-[#024a5c] dark:from-[#03213B] dark:to-[#024a5c] p-8 sm:p-12 text-center border border-[#00C895]/20">
+    <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+      Ready to build your agent mesh?
+    </h2>
+    <p className="text-lg text-gray-200 dark:text-gray-200 max-w-2xl mx-auto mb-8">
+      Start building scalable, event-driven AI systems with Solace Agent Mesh today
+    </p>
+    <div className="flex flex-wrap gap-4 justify-center">
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center px-8 py-4 bg-[#00C895] hover:bg-[#00b085] text-white font-semibold rounded-lg transition-colors shadow-lg no-underline"
+      >
+        Get Started
+        <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </a>
+      <a 
+        href="https://github.com/SolaceLabs/solace-agent-mesh" 
+        className="inline-flex items-center px-8 py-4 border-2 border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition-colors backdrop-blur-sm no-underline"
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>

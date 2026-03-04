@@ -1,0 +1,729 @@
+---
+title: "Production Deployment"
+description: "Deploy Solace Agent Mesh to production with Docker, Kubernetes, and best practices"
+---
+
+<Info>
+  **What you'll learn**: Production deployment strategies, scaling, monitoring, and security
+  
+  **Time**: ~45 minutes
+  
+  **Prerequisites**:
+  - Completed previous tutorials
+  - Basic Docker and Kubernetes knowledge
+  - Production infrastructure access
+</Info>
+
+## Deployment architecture
+
+```mermaid
+graph TD
+    A[Load Balancer] --> B[Gateway Pods]
+    B --> C[Solace Event Broker]
+    C --> D[Agent Pod 1]
+    C --> E[Agent Pod 2]
+    C --> F[Agent Pod N]
+    D --> G[PostgreSQL]
+    E --> G
+    F --> G
+    D --> H[Redis Cache]
+    E --> H
+    F --> H
+    B --> I[Object Storage]
+    D --> I
+    E --> I
+    F --> I
+```
+
+## Production checklist
+
+<Steps>
+<Step title="Infrastructure setup">
+
+### 1. Event broker
+
+**Option A: Solace PubSub+ Cloud**
+
+1. Sign up at [solace.com/cloud](https://solace.com/cloud)
+2. Create a service
+3. Note connection details:
+   - Broker URL
+   - VPN name
+   - Username/password
+
+**Option B: Self-hosted Solace**
+
+```yaml docker-compose.yml
+version: '3'
+services:
+  solace:
+    image: solace/solace-pubsub-standard:latest
+    container_name: solace
+    ports:
+      - "8008:8008"   # WebSocket
+      - "8080:8080"   # SEMP
+      - "55555:55555" # SMF
+    environment:
+      - username_admin_globalaccesslevel=admin
+      - username_admin_password=admin
+    volumes:
+      - solace-data:/var/lib/solace
+    shm_size: 2g
+
+volumes:
+  solace-data:
+```
+
+### 2. Database
+
+**PostgreSQL for production:**
+
+```bash
+# Docker
+docker run -d \
+  --name postgres \
+  -e POSTGRES_DB=sam_production \
+  -e POSTGRES_USER=sam_user \
+  -e POSTGRES_PASSWORD=secure_password \
+  -p 5432:5432 \
+  -v postgres-data:/var/lib/postgresql/data \
+  postgres:15
+
+# Or use managed service:
+# - AWS RDS
+# - Google Cloud SQL
+# - Azure Database
+```
+
+### 3. Object storage
+
+**S3-compatible storage for artifacts:**
+
+```yaml
+artifact_service:
+  type: "s3"
+  bucket_name: "sam-artifacts-prod"
+  region: "us-east-1"
+  aws_access_key_id: ${AWS_ACCESS_KEY_ID}
+  aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+```
+
+</Step>
+
+<Step title="Containerization">
+
+### Create production Dockerfile
+
+```dockerfile Dockerfile
+FROM python:3.10-slim
+
+# Security: Run as non-root
+RUN groupadd -r sam && useradd -r -g sam sam
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY --chown=sam:sam . .
+
+# Switch to non-root user
+USER sam
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import sys; sys.exit(0)"
+
+CMD ["sam", "run"]
+```
+
+### Build and push
+
+```bash
+# Build
+docker build -t my-registry/sam-agent:v1.0.0 .
+
+# Push to registry
+docker push my-registry/sam-agent:v1.0.0
+```
+
+</Step>
+
+<Step title="Kubernetes deployment">
+
+### ConfigMap for configuration
+
+```yaml k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam-config
+  namespace: production
+data:
+  namespace: "production"
+  log_level: "INFO"
+```
+
+### Secret for sensitive data
+
+```yaml k8s/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sam-secrets
+  namespace: production
+type: Opaque
+stringData:
+  solace-password: "${SOLACE_PASSWORD}"
+  database-url: "${DATABASE_URL}"
+  llm-api-key: "${LLM_API_KEY}"
+```
+
+### Agent deployment
+
+```yaml k8s/agent-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-agent
+  namespace: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: research-agent
+  template:
+    metadata:
+      labels:
+        app: research-agent
+    spec:
+      containers:
+      - name: agent
+        image: my-registry/sam-agent:v1.0.0
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: sam-config
+              key: namespace
+        - name: SOLACE_BROKER_URL
+          value: "wss://production-broker.solace.com:443"
+        - name: SOLACE_BROKER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sam-secrets
+              key: solace-password
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: sam-secrets
+              key: database-url
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: sam-secrets
+              key: llm-api-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: research-agent
+  namespace: production
+spec:
+  selector:
+    app: research-agent
+  ports:
+  - port: 8080
+    targetPort: 8080
+```
+
+### Gateway deployment
+
+```yaml k8s/gateway-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rest-gateway
+  namespace: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rest-gateway
+  template:
+    metadata:
+      labels:
+        app: rest-gateway
+    spec:
+      containers:
+      - name: gateway
+        image: my-registry/sam-gateway:v1.0.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: sam-config
+              key: namespace
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rest-gateway
+  namespace: production
+spec:
+  type: LoadBalancer
+  selector:
+    app: rest-gateway
+  ports:
+  - port: 443
+    targetPort: 8080
+```
+
+### Deploy to Kubernetes
+
+```bash
+# Create namespace
+kubectl create namespace production
+
+# Apply configurations
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/agent-deployment.yaml
+kubectl apply -f k8s/gateway-deployment.yaml
+
+# Verify deployments
+kubectl get pods -n production
+kubectl get services -n production
+```
+
+</Step>
+
+<Step title="Monitoring and logging">
+
+### Prometheus metrics
+
+```python metrics.py
+from prometheus_client import Counter, Histogram, Gauge
+import time
+
+# Define metrics
+task_counter = Counter(
+    'sam_tasks_total',
+    'Total tasks processed',
+    ['agent_name', 'status']
+)
+
+task_duration = Histogram(
+    'sam_task_duration_seconds',
+    'Task processing duration',
+    ['agent_name']
+)
+
+active_tasks = Gauge(
+    'sam_active_tasks',
+    'Number of active tasks',
+    ['agent_name']
+)
+
+# Use in agent code
+def process_task(agent_name: str):
+    active_tasks.labels(agent_name=agent_name).inc()
+    start = time.time()
+    
+    try:
+        # Process task...
+        task_counter.labels(
+            agent_name=agent_name,
+            status='success'
+        ).inc()
+    except Exception as e:
+        task_counter.labels(
+            agent_name=agent_name,
+            status='error'
+        ).inc()
+        raise
+    finally:
+        duration = time.time() - start
+        task_duration.labels(agent_name=agent_name).observe(duration)
+        active_tasks.labels(agent_name=agent_name).dec()
+```
+
+### Structured logging
+
+```yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: /var/log/sam/agent.log
+  format: json  # For better parsing
+  include_timestamp: true
+  include_agent_name: true
+  include_correlation_id: true
+```
+
+### Grafana dashboards
+
+```json grafana-dashboard.json
+{
+  "dashboard": {
+    "title": "SAM Production Metrics",
+    "panels": [
+      {
+        "title": "Task Processing Rate",
+        "targets": [
+          {
+            "expr": "rate(sam_tasks_total[5m])"
+          }
+        ]
+      },
+      {
+        "title": "Task Duration (p95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sam_task_duration_seconds_bucket)"
+          }
+        ]
+      },
+      {
+        "title": "Active Tasks",
+        "targets": [
+          {
+            "expr": "sam_active_tasks"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+</Step>
+
+<Step title="Security hardening">
+
+### 1. Network security
+
+```yaml
+# Network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: research-agent
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: production
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: solace-broker
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+```
+
+### 2. Secret management
+
+```bash
+# Use external secret manager
+kubectl apply -f - <<EOF
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: aws-secrets-manager
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: sam-secrets
+spec:
+  secretStoreRef:
+    name: aws-secrets-manager
+  target:
+    name: sam-secrets
+  data:
+  - secretKey: llm-api-key
+    remoteRef:
+      key: production/sam/llm-api-key
+EOF
+```
+
+### 3. RBAC configuration
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sam-agent
+  namespace: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sam-agent-role
+  namespace: production
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sam-agent-rolebinding
+  namespace: production
+subjects:
+- kind: ServiceAccount
+  name: sam-agent
+roleRef:
+  kind: Role
+  name: sam-agent-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+</Step>
+</Steps>
+
+## Auto-scaling
+
+### Horizontal Pod Autoscaler
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: research-agent-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: research-agent
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+## CI/CD pipeline
+
+```yaml .github/workflows/deploy.yaml
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t my-registry/sam-agent:${{ github.ref_name }} .
+    
+    - name: Push to registry
+      run: |
+        echo ${{ secrets.REGISTRY_PASSWORD }} | docker login -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+        docker push my-registry/sam-agent:${{ github.ref_name }}
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/research-agent \
+          agent=my-registry/sam-agent:${{ github.ref_name }} \
+          -n production
+    
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/research-agent -n production
+```
+
+## Disaster recovery
+
+### Backup strategy
+
+```bash backup.sh
+#!/bin/bash
+
+# Backup PostgreSQL
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d).sql
+
+# Backup vector database
+tar -czf chroma_backup_$(date +%Y%m%d).tar.gz ./chroma_db/
+
+# Upload to S3
+aws s3 cp backup_$(date +%Y%m%d).sql s3://backups/sam/
+aws s3 cp chroma_backup_$(date +%Y%m%d).tar.gz s3://backups/sam/
+```
+
+### Restore procedure
+
+```bash restore.sh
+#!/bin/bash
+
+# Download from S3
+aws s3 cp s3://backups/sam/backup_20240301.sql .
+aws s3 cp s3://backups/sam/chroma_backup_20240301.tar.gz .
+
+# Restore PostgreSQL
+psql $DATABASE_URL < backup_20240301.sql
+
+# Restore vector database
+tar -xzf chroma_backup_20240301.tar.gz
+```
+
+## Performance optimization
+
+<AccordionGroup>
+  <Accordion title="Connection pooling">
+    ```python
+    # Use connection pooling for database
+    DATABASE_URL = "postgresql://user:pass@host/db?pool_size=20&max_overflow=10"
+    ```
+  </Accordion>
+
+  <Accordion title="Caching strategies">
+    ```python
+    import redis
+    
+    cache = redis.Redis(host='redis', port=6379, db=0)
+    
+    def get_with_cache(key: str):
+        # Check cache first
+        cached = cache.get(key)
+        if cached:
+            return cached
+        
+        # Fetch from source
+        data = fetch_data(key)
+        
+        # Cache for 1 hour
+        cache.setex(key, 3600, data)
+        return data
+    ```
+  </Accordion>
+
+  <Accordion title="Request rate limiting">
+    ```python
+    from slowapi import Limiter
+    
+    limiter = Limiter(key_func=get_remote_address)
+    
+    @app.post("/task")
+    @limiter.limit("10/minute")
+    async def create_task(request: Request):
+        # Handle task...
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Cost optimization
+
+1. **Use spot instances** for non-critical agents
+2. **Implement auto-scaling** to match demand
+3. **Cache LLM responses** where appropriate
+4. **Use smaller models** for simple tasks
+5. **Batch operations** when possible
+
+## Congratulations!
+
+<Check>
+  You've completed all Solace Agent Mesh tutorials!
+  
+  You now know how to:
+  - Build agents with various capabilities
+  - Create complex workflows
+  - Implement RAG systems
+  - Deploy to production at scale
+</Check>
+
+## Further resources
+
+<CardGroup cols={2}>
+
+<Card title="API Reference" icon="code" href="/api-reference/introduction">
+  Complete API documentation
+</Card>
+
+<Card title="Best Practices" icon="star" href="/essentials/best-practices">
+  Production best practices
+</Card>
+
+<Card title="Community" icon="users" href="https://github.com/SolaceLabs/solace-agent-mesh">
+  Join the SAM community
+</Card>
+
+<Card title="Support" icon="life-ring" href="/essentials/support">
+  Get help and support
+</Card>
+
+</CardGroup>

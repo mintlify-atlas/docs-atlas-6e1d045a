@@ -1,0 +1,455 @@
+---
+title: Research Tools
+description: Tools for web search and comprehensive research capabilities
+---
+
+Research tools enable agents to search the web, gather information from multiple sources, and conduct comprehensive deep research with iterative refinement.
+
+## Tool: web_search_google
+
+Search the web using Google Custom Search API to retrieve current information.
+
+### Parameters
+
+<ParamField path="query" type="string" required>
+  The search query string.
+</ParamField>
+
+<ParamField path="max_results" type="integer" default={5}>
+  Maximum number of results to return (1-10).
+</ParamField>
+
+<ParamField path="search_type" type="string" default={null}>
+  Set to `"image"` for image search, omit for web search.
+</ParamField>
+
+<ParamField path="date_restrict" type="string" default={null}>
+  Restrict results by recency. Examples:
+  - `"d1"`: Last day
+  - `"d7"`: Last 7 days
+  - `"m1"`: Last month
+  - `"y1"`: Last year
+</ParamField>
+
+<ParamField path="safe_search" type="string" default={null}>
+  Safe search level: `"off"`, `"medium"`, or `"high"`.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.web_search_tools import web_search_google
+
+# Basic web search
+result = await web_search_google(
+    query="Solace Agent Mesh documentation",
+    max_results=5,
+    tool_context=context,
+    tool_config={
+        "google_search_api_key": "your-api-key",
+        "google_cse_id": "your-search-engine-id"
+    }
+)
+
+if isinstance(result, dict) and result.get("result"):
+    import json
+    search_data = json.loads(result["result"])
+    
+    for item in search_data.get("organic", []):
+        print(f"Title: {item['title']}")
+        print(f"URL: {item['link']}")
+        print(f"Snippet: {item['snippet']}")
+        print()
+```
+
+### Recent Results Example
+
+```python
+# Search for recent news
+result = await web_search_google(
+    query="AI developments",
+    max_results=10,
+    date_restrict="d7",  # Last 7 days
+    safe_search="medium",
+    tool_context=context,
+    tool_config={"google_search_api_key": "your-key", "google_cse_id": "your-id"}
+)
+```
+
+### Image Search Example
+
+```python
+# Search for images
+result = await web_search_google(
+    query="mountain landscapes",
+    search_type="image",
+    max_results=10,
+    tool_context=context,
+    tool_config={"google_search_api_key": "your-key", "google_cse_id": "your-id"}
+)
+```
+
+### Configuration
+
+```yaml
+builtin_tools:
+  - name: web_search_google
+    config:
+      google_search_api_key: ${GOOGLE_SEARCH_API_KEY}
+      google_cse_id: ${GOOGLE_CSE_ID}
+```
+
+### Getting API Credentials
+
+<Steps>
+  <Step title="Get API Key">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+    2. Enable Custom Search API
+    3. Create API credentials
+    4. Copy the API key
+  </Step>
+  
+  <Step title="Create Search Engine">
+    1. Visit [Programmable Search Engine](https://programmablesearchengine.google.com/)
+    2. Create a new search engine
+    3. Configure to search the entire web
+    4. Copy the Search Engine ID
+  </Step>
+</Steps>
+
+### Response Format
+
+The tool returns a dictionary with:
+
+```json
+{
+  "result": "{...}",  // JSON string of search results
+  "formatted_results": "...",  // Human-readable formatted results
+  "rag_metadata": {...},  // Metadata for RAG system with citations
+  "valid_citation_ids": ["s0r0", "s0r1", "s0r2"],
+  "num_results": 5,
+  "search_turn": 0
+}
+```
+
+### Citation System
+
+The search results include citation IDs that can be used to reference sources:
+
+```python
+result = await web_search_google(query="AI safety", tool_context=context)
+
+# Citation IDs are formatted as: s{turn}r{result}
+# s0r0 = Search turn 0, Result 0
+# s0r1 = Search turn 0, Result 1
+# s1r0 = Search turn 1, Result 0 (if you search again)
+
+# Use [[cite:s0r0]] in your response to cite the first result
+response_text = "AI safety is crucial [[cite:s0r0]]."
+```
+
+<Note>
+  **Citation IDs are unique per search turn** to prevent collisions when multiple searches are performed in a session.
+</Note>
+
+## Tool: deep_research
+
+Conduct comprehensive, iterative research on a topic using multiple sources and LLM-powered reflection.
+
+### Overview
+
+The `deep_research` tool:
+1. **Generates queries**: Uses LLM to create diverse search queries
+2. **Searches multiple sources**: Web, knowledge bases (configurable)
+3. **Reflects on findings**: LLM analyzes completeness and identifies gaps
+4. **Refines iteratively**: Generates new queries to fill knowledge gaps
+5. **Produces comprehensive report**: Synthesizes all findings into a detailed research report
+
+### Parameters
+
+<ParamField path="research_question" type="string" required>
+  The main research question or topic to investigate.
+</ParamField>
+
+<ParamField path="max_iterations" type="integer" default={3}>
+  Maximum number of research iterations (1-10).
+</ParamField>
+
+<ParamField path="max_sources_per_iteration" type="integer" default={5}>
+  Maximum results per search query.
+</ParamField>
+
+<ParamField path="sources" type="array" default={["web"]}>
+  Data sources to search. Currently supports `["web"]`.
+</ParamField>
+
+<ParamField path="max_sources_to_fetch" type="integer" default={10}>
+  Maximum number of web pages to fetch full content from.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.deep_research_tools import deep_research
+
+# Comprehensive research on a topic
+result = await deep_research(
+    research_question="What are the latest developments in quantum computing?",
+    max_iterations=3,
+    max_sources_per_iteration=5,
+    max_sources_to_fetch=10,
+    tool_context=context,
+    tool_config={
+        "google_search_api_key": "your-key",
+        "google_cse_id": "your-id"
+    }
+)
+
+if result.status == "success":
+    report_filename = result.data["report_filename"]
+    report_version = result.data["report_version"]
+    sources_count = result.data["sources_analyzed"]
+    print(f"Research complete: {sources_count} sources analyzed")
+    print(f"Report: {report_filename} v{report_version}")
+```
+
+### Advanced Configuration
+
+The deep research tool supports phase-specific model configuration for cost optimization:
+
+```yaml
+builtin_tools:
+  - name: deep_research
+    config:
+      # Search configuration
+      google_search_api_key: ${GOOGLE_SEARCH_API_KEY}
+      google_cse_id: ${GOOGLE_CSE_ID}
+      
+      # Phase-specific models for cost optimization
+      models:
+        query_generation: gpt-4o-mini  # Fast model for query generation
+        reflection: gpt-4o-mini         # Fast model for reflection
+        source_selection: gpt-4o-mini   # Fast model for source selection
+        report_generation: claude-3-5-sonnet-20241022  # High-quality model for final report
+      
+      # Or use full model configs with parameters
+      model_configs:
+        report_generation:
+          model: claude-3-5-sonnet-20241022
+          temperature: 0.7
+          max_tokens: 16000
+```
+
+### Research Phases
+
+The deep research process consists of several phases:
+
+<Steps>
+  <Step title="Query Generation">
+    LLM generates 3-5 diverse search queries to comprehensively explore the topic.
+    
+    ```python
+    # Example generated queries for "quantum computing developments":
+    # 1. "quantum computing breakthroughs 2024"
+    # 2. "quantum error correction advances"
+    # 3. "commercial quantum computers applications"
+    # 4. "quantum supremacy recent achievements"
+    ```
+  </Step>
+  
+  <Step title="Multi-Source Search">
+    Executes searches across configured sources and collects results.
+  </Step>
+  
+  <Step title="Source Selection">
+    LLM intelligently selects the most authoritative and relevant sources to fetch full content from.
+  </Step>
+  
+  <Step title="Content Fetching">
+    Retrieves full web page content from selected sources.
+  </Step>
+  
+  <Step title="Reflection & Gap Analysis">
+    LLM analyzes findings to:
+    - Assess information completeness (quality score 0-1)
+    - Identify knowledge gaps
+    - Determine if more research is needed
+    - Generate refined queries for next iteration
+  </Step>
+  
+  <Step title="Report Generation">
+    LLM synthesizes all findings into a comprehensive research report.
+  </Step>
+</Steps>
+
+### Progress Updates
+
+The tool sends real-time progress updates to the frontend:
+
+```javascript
+// Frontend receives structured progress events
+{
+  "phase": "searching",
+  "status_text": "Searching web for: quantum computing developments...",
+  "progress_percentage": 30,
+  "current_iteration": 1,
+  "total_iterations": 3,
+  "sources_found": 15,
+  "current_query": "quantum computing developments 2024"
+}
+```
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "message": "Deep research completed successfully.",
+  "data": {
+    "report_filename": "research_report_quantum_computing.md",
+    "report_version": 0,
+    "sources_analyzed": 25,
+    "iterations_completed": 3,
+    "quality_score": 0.92,
+    "title": "Latest Developments in Quantum Computing"
+  }
+}
+```
+
+### Research Report Structure
+
+The generated report includes:
+
+```markdown
+# Latest Developments in Quantum Computing
+
+## Executive Summary
+[High-level overview of key findings]
+
+## Key Findings
+
+### 1. Breakthrough in Error Correction
+[Detailed findings with citations [[cite:s0r0]]]
+
+### 2. Commercial Applications Emerging
+[Detailed findings with citations [[cite:s1r3]]]
+
+## Detailed Analysis
+
+### Technical Advances
+[In-depth analysis with multiple citations]
+
+### Market Developments
+[In-depth analysis with multiple citations]
+
+## Conclusion
+[Summary and implications]
+
+## Sources
+[Automatically generated source list with URLs]
+```
+
+### Reflection Example
+
+The LLM provides reasoning for each iteration:
+
+```json
+{
+  "quality_score": 0.75,
+  "gaps": [
+    "Missing information on commercial applications",
+    "Need more recent developments from 2024",
+    "Lack of technical details on error correction methods"
+  ],
+  "should_continue": true,
+  "suggested_queries": [
+    "quantum computing commercial applications 2024",
+    "quantum error correction breakthrough 2024",
+    "IBM quantum computer recent developments"
+  ],
+  "reasoning": "Good foundational coverage of quantum computing, but missing recent commercial developments and specific technical breakthroughs from 2024."
+}
+```
+
+## Alternative Search Providers
+
+<Note>
+  For other search providers like **Exa**, **Brave**, and **Tavily**, use the corresponding plugins from the [solace-agent-mesh-plugins](https://github.com/solacecommunity/solace-agent-mesh-plugins) repository.
+</Note>
+
+### Example: Using Exa Search Plugin
+
+```yaml
+# Install from plugins repository
+pip install solace-agent-mesh-plugins[exa]
+
+# Configure in agent YAML
+plugins:
+  - name: exa_search
+    module: solace_agent_mesh_plugins.exa_search
+    config:
+      exa_api_key: ${EXA_API_KEY}
+
+builtin_tools:
+  - name: deep_research
+    config:
+      # Deep research can use plugin search tools
+      search_provider: exa_search
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Effective Search Queries">
+    - Be specific and use relevant keywords
+    - Include date/time context when needed
+    - Use quotes for exact phrases: `"machine learning"`
+    - Combine with operators: `AI safety -robotics`
+  </Accordion>
+
+  <Accordion title="Deep Research Configuration">
+    - Start with 2-3 iterations for most topics
+    - Increase `max_sources_to_fetch` for comprehensive research (15-20)
+    - Use phase-specific models to optimize cost:
+      - Fast models for query generation and reflection
+      - High-quality models for final report
+  </Accordion>
+
+  <Accordion title="Citation Management">
+    - Always cite sources using the provided citation IDs
+    - Use format `[[cite:s0r0]]` in your text
+    - Each search turn has unique citation IDs to prevent collisions
+    - Citations are automatically linked to sources in the UI
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+```python
+result = await web_search_google(query="AI", tool_context=context)
+
+if isinstance(result, str) and result.startswith("Error:"):
+    error = result
+    
+    if "api_key" in error.lower():
+        print("Google Search API key not configured")
+    elif "quota" in error.lower():
+        print("API quota exceeded")
+    else:
+        print(f"Search error: {error}")
+```
+
+## Rate Limits and Quotas
+
+<Warning>
+  **Google Custom Search API** has a free tier limit of 100 queries per day. For production use, consider:
+  - Enabling billing for higher quotas
+  - Implementing caching to reduce API calls
+  - Using alternative search providers from plugins
+</Warning>
+
+## See Also
+
+- [Web Tools Plugin](https://github.com/solacecommunity/solace-agent-mesh-plugins) - Additional search providers
+- [Artifact Management](/built-in-tools/artifact-management) - Manage research reports
+- [Configuration Guide](/api/agent/tools) - Configure research tools

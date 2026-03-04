@@ -1,0 +1,329 @@
+---
+title: Data Analysis Tools
+description: Tools for analyzing data and creating visualizations
+---
+
+Data analysis tools enable agents to create charts, visualizations, and analyze data using various formats and libraries.
+
+## Tool: create_chart_from_plotly_config
+
+Generates static chart images from Plotly configuration provided as JSON or YAML.
+
+### Parameters
+
+<ParamField path="config_content" type="string" required>
+  The Plotly configuration as a JSON or YAML string. Must be a complete Plotly figure configuration.
+</ParamField>
+
+<ParamField path="config_format" type="string" required>
+  The format of the config_content. Must be either `"json"` or `"yaml"`.
+</ParamField>
+
+<ParamField path="output_filename" type="string" required>
+  The desired filename for the output image artifact.
+</ParamField>
+
+<ParamField path="output_format" type="string" default="png">
+  The desired image format. Options: `"png"`, `"jpg"`, `"svg"`, `"pdf"`, `"webp"`.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.builtin_data_analysis_tools import create_chart_from_plotly_config
+import json
+
+# Define Plotly configuration
+plotly_config = {
+    "data": [
+        {
+            "type": "bar",
+            "x": ["Q1", "Q2", "Q3", "Q4"],
+            "y": [100, 150, 120, 180],
+            "name": "Revenue"
+        }
+    ],
+    "layout": {
+        "title": "Quarterly Revenue 2024",
+        "xaxis": {"title": "Quarter"},
+        "yaxis": {"title": "Revenue ($K)"}
+    }
+}
+
+# Create chart
+result = await create_chart_from_plotly_config(
+    config_content=json.dumps(plotly_config),
+    config_format="json",
+    output_filename="revenue_chart",
+    output_format="png",
+    tool_context=context
+)
+
+if result.status == "success":
+    # Chart is saved as artifact and can be displayed
+    chart_data = result.data_objects[0]
+    print(f"Chart created: {chart_data.name}")
+```
+
+### YAML Configuration Example
+
+```python
+yaml_config = """
+data:
+  - type: scatter
+    x: [1, 2, 3, 4, 5]
+    y: [10, 15, 13, 17, 20]
+    mode: lines+markers
+    name: Sales Trend
+layout:
+  title: Sales Over Time
+  xaxis:
+    title: Month
+  yaxis:
+    title: Sales
+"""
+
+result = await create_chart_from_plotly_config(
+    config_content=yaml_config,
+    config_format="yaml",
+    output_filename="sales_trend.png",
+    output_format="png",
+    tool_context=context
+)
+```
+
+### Supported Chart Types
+
+Plotly supports a wide variety of chart types:
+
+<AccordionGroup>
+  <Accordion title="Basic Charts">
+    - **Bar Charts**: Horizontal or vertical bars
+    - **Line Charts**: Connected data points
+    - **Scatter Plots**: Individual data points
+    - **Pie Charts**: Proportional circular sectors
+    - **Area Charts**: Filled regions under lines
+  </Accordion>
+
+  <Accordion title="Statistical Charts">
+    - **Box Plots**: Distribution summaries
+    - **Violin Plots**: Distribution shapes
+    - **Histograms**: Frequency distributions
+    - **Heatmaps**: 2D data matrices
+  </Accordion>
+
+  <Accordion title="Advanced Charts">
+    - **3D Plots**: Surface, scatter, and line plots in 3D
+    - **Contour Plots**: Topographic-style visualizations
+    - **Candlestick**: Financial OHLC data
+    - **Funnel Charts**: Stage-based visualizations
+    - **Sunburst**: Hierarchical data
+  </Accordion>
+</AccordionGroup>
+
+### Complete Example: Sales Dashboard
+
+```python
+import json
+
+# Multi-series bar chart with custom styling
+config = {
+    "data": [
+        {
+            "type": "bar",
+            "name": "2023",
+            "x": ["Jan", "Feb", "Mar", "Apr"],
+            "y": [120, 135, 145, 160],
+            "marker": {"color": "#3b82f6"}
+        },
+        {
+            "type": "bar",
+            "name": "2024",
+            "x": ["Jan", "Feb", "Mar", "Apr"],
+            "y": [140, 155, 165, 185],
+            "marker": {"color": "#10b981"}
+        }
+    ],
+    "layout": {
+        "title": {
+            "text": "Sales Comparison: 2023 vs 2024",
+            "font": {"size": 20}
+        },
+        "xaxis": {"title": "Month"},
+        "yaxis": {"title": "Sales ($K)"},
+        "barmode": "group",
+        "template": "plotly_white",
+        "showlegend": True,
+        "width": 800,
+        "height": 500
+    }
+}
+
+result = await create_chart_from_plotly_config(
+    config_content=json.dumps(config, indent=2),
+    config_format="json",
+    output_filename="sales_comparison.png",
+    output_format="png",
+    tool_context=context
+)
+```
+
+### Output Formats
+
+<ParamField path="png" type="format">
+  **PNG** - Raster image format, good for web and presentations. Best for most use cases.
+</ParamField>
+
+<ParamField path="svg" type="format">
+  **SVG** - Vector format, scalable without quality loss. Ideal for publications and print.
+</ParamField>
+
+<ParamField path="pdf" type="format">
+  **PDF** - Vector format in PDF container. Perfect for reports and documents.
+</ParamField>
+
+<ParamField path="jpg" type="format">
+  **JPEG** - Compressed raster format. Use when file size is critical.
+</ParamField>
+
+<ParamField path="webp" type="format">
+  **WebP** - Modern web format with better compression than PNG/JPEG.
+</ParamField>
+
+## Configuration
+
+The chart creation tool requires the `plotly` and `kaleido` libraries:
+
+```yaml
+builtin_tools:
+  - name: create_chart_from_plotly_config
+```
+
+### Required Dependencies
+
+```bash
+pip install plotly kaleido
+```
+
+<Note>
+  **Kaleido** is required for image export. If not installed, you'll receive an error message.
+</Note>
+
+## Response Format
+
+Successful chart creation returns a `DataObject` in the result:
+
+```json
+{
+  "status": "success",
+  "message": "Chart image created successfully.",
+  "data": {
+    "source_format": "json",
+    "output_format": "png"
+  },
+  "data_objects": [
+    {
+      "name": "revenue_chart.png",
+      "mime_type": "image/png",
+      "disposition": "artifact",
+      "description": "Chart generated from Plotly config (json)",
+      "metadata": {
+        "source_format": "json",
+        "output_format": "png",
+        "generation_tool": "create_chart_from_plotly_config",
+        "generation_timestamp": "2024-03-01T10:30:00Z"
+      }
+    }
+  ]
+}
+```
+
+## Advanced Examples
+
+### Heatmap with Custom Colorscale
+
+```python
+config = {
+    "data": [
+        {
+            "type": "heatmap",
+            "z": [
+                [1, 20, 30, 50, 1],
+                [20, 1, 60, 80, 30],
+                [30, 60, 1, -10, 20]
+            ],
+            "x": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+            "y": ["Morning", "Afternoon", "Evening"],
+            "colorscale": "Viridis"
+        }
+    ],
+    "layout": {
+        "title": "Activity Heatmap"
+    }
+}
+```
+
+### 3D Surface Plot
+
+```python
+import numpy as np
+
+# Generate data
+x = np.linspace(-5, 5, 50)
+y = np.linspace(-5, 5, 50)
+X, Y = np.meshgrid(x, y)
+Z = np.sin(np.sqrt(X**2 + Y**2))
+
+config = {
+    "data": [
+        {
+            "type": "surface",
+            "z": Z.tolist(),
+            "colorscale": "Viridis"
+        }
+    ],
+    "layout": {
+        "title": "3D Surface Plot",
+        "scene": {
+            "xaxis": {"title": "X"},
+            "yaxis": {"title": "Y"},
+            "zaxis": {"title": "Z"}
+        }
+    }
+}
+```
+
+## Error Handling
+
+```python
+result = await create_chart_from_plotly_config(
+    config_content=invalid_json,
+    config_format="json",
+    output_filename="chart.png",
+    tool_context=context
+)
+
+if result.status == "error":
+    if "parse" in result.message.lower():
+        print("Invalid JSON/YAML configuration")
+    elif "plotly" in result.message.lower():
+        print("Invalid Plotly configuration")
+    elif "kaleido" in result.message.lower():
+        print("Kaleido library not installed")
+```
+
+## Best Practices
+
+<Card title="Configuration Tips" icon="lightbulb">
+  - Always validate your Plotly config before passing to the tool
+  - Use descriptive titles and axis labels
+  - Choose appropriate chart types for your data
+  - Consider output format based on use case (PNG for web, SVG for print)
+  - Set appropriate width/height in layout for better rendering
+</Card>
+
+## See Also
+
+- [Plotly Documentation](https://plotly.com/python/) - Complete Plotly reference
+- [Artifact Management](/built-in-tools/artifact-management) - Managing chart artifacts
+- [Chart Templates](https://plotly.com/python/templates/) - Pre-built Plotly themes

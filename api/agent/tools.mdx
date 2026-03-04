@@ -1,0 +1,597 @@
+---
+title: 'Tool Development'
+description: 'Create custom tools for Solace Agent Mesh agents'
+icon: 'wrench'
+---
+
+## Overview
+
+Tools extend agent capabilities by providing access to external systems, APIs, and custom logic. Solace Agent Mesh supports multiple tool types:
+
+- **Built-in Tools**: Pre-packaged tools for common operations
+- **MCP Tools**: Model Context Protocol tools from any MCP server
+- **Custom Tools**: Your own tool implementations
+
+## Tool Definition Model
+
+All tools in Solace Agent Mesh are defined using the `BuiltinTool` model:
+
+```python
+from pydantic import BaseModel, Field
+from typing import Callable, List, Dict, Any, Optional
+from google.genai import types as adk_types
+
+class BuiltinTool(BaseModel):
+    """A self-contained, declarative definition for a tool."""
+    
+    name: str = Field(
+        ..., 
+        description="The function name the LLM will call."
+    )
+    
+    implementation: Callable = Field(
+        ..., 
+        description="The async Python function that implements the tool."
+    )
+    
+    description: str = Field(
+        ...,
+        description="High-level description for the LLM."
+    )
+    
+    parameters: adk_types.Schema = Field(
+        ..., 
+        description="OpenAPI-like schema for tool parameters."
+    )
+    
+    examples: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Few-shot examples for the LLM."
+    )
+    
+    required_scopes: List[str] = Field(
+        default_factory=list,
+        description="Scopes required to execute this tool."
+    )
+    
+    category: str = Field(
+        default="General",
+        description="Category for grouping tools."
+    )
+    
+    raw_string_args: List[str] = Field(
+        default_factory=list,
+        description="Args passed as raw strings without embed resolution."
+    )
+    
+    artifact_args: List[str] = Field(
+        default_factory=list,
+        description="Args that are artifact filenames to pre-load."
+    )
+```
+
+## Creating a Custom Tool
+
+### Step 1: Define the Tool Function
+
+Create an async function that implements your tool logic:
+
+```python
+from google.adk.tools import ToolContext
+from solace_agent_mesh.agent.tools.tool_result import ToolResult
+from typing import Optional
+
+async def search_database(
+    query: str,
+    limit: Optional[int] = 10,
+    tool_context: ToolContext = None,
+) -> ToolResult:
+    """
+    Search the database for matching records.
+    
+    Args:
+        query: Search query string
+        limit: Maximum number of results
+        tool_context: ADK tool context (automatically provided)
+    
+    Returns:
+        ToolResult with search results
+    """
+    try:
+        # Access services from tool_context
+        inv_context = tool_context._invocation_context
+        artifact_service = inv_context.artifact_service
+        
+        # Perform search
+        results = await database.search(query, limit=limit)
+        
+        # Return success with data
+        return ToolResult.success(
+            message=f"Found {len(results)} results",
+            data={
+                "query": query,
+                "results": results,
+                "count": len(results),
+            },
+        )
+    
+    except Exception as e:
+        # Return error
+        return ToolResult.error(
+            message=f"Search failed: {str(e)}",
+            data={"query": query},
+        )
+```
+
+### Step 2: Define the Tool Schema
+
+Create a `BuiltinTool` definition:
+
+```python
+from google.genai import types as adk_types
+from solace_agent_mesh.agent.tools.tool_definition import BuiltinTool
+
+search_database_tool = BuiltinTool(
+    name="search_database",
+    implementation=search_database,
+    description="Search the database for records matching a query.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "query": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="The search query string",
+            ),
+            "limit": adk_types.Schema(
+                type=adk_types.Type.INTEGER,
+                description="Maximum number of results to return",
+            ),
+        },
+        required=["query"],
+    ),
+    examples=[
+        {
+            "query": "machine learning papers",
+            "limit": 5,
+        },
+    ],
+    category="Database",
+)
+```
+
+### Step 3: Register the Tool
+
+Register your tool with the tool registry:
+
+```python
+from solace_agent_mesh.agent.tools.registry import tool_registry
+
+# Register single tool
+tool_registry.register_tool(search_database_tool)
+
+# Register multiple tools
+tool_registry.register_tools([
+    search_database_tool,
+    another_tool,
+])
+```
+
+## Tool Result Model
+
+Tools return a `ToolResult` object that provides structured feedback:
+
+```python
+from solace_agent_mesh.agent.tools.tool_result import (
+    ToolResult,
+    DataObject,
+    DataDisposition,
+)
+
+class ToolResult:
+    """Structured result from tool execution."""
+    
+    status: str  # "success", "error", "partial"
+    message: str  # Human-readable message
+    data: Optional[Dict[str, Any]]  # Structured data
+    data_objects: List[DataObject]  # Artifacts to return
+    
+    @classmethod
+    def success(
+        cls,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> "ToolResult":
+        """Create success result."""
+        return cls(
+            status="success",
+            message=message,
+            data=data,
+        )
+    
+    @classmethod
+    def error(
+        cls,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> "ToolResult":
+        """Create error result."""
+        return cls(
+            status="error",
+            message=message,
+            data=data,
+        )
+```
+
+## Working with Artifacts
+
+Tools can create and read artifacts:
+
+### Creating Artifacts
+
+```python
+from solace_agent_mesh.agent.tools.tool_result import (
+    DataObject,
+    DataDisposition,
+)
+
+async def generate_report(
+    topic: str,
+    tool_context: ToolContext = None,
+) -> ToolResult:
+    """Generate a report and save as artifact."""
+    
+    # Generate report content
+    report_content = await create_report(topic)
+    
+    # Return with artifact
+    return ToolResult.success(
+        message=f"Generated report on {topic}",
+        data_objects=[
+            DataObject(
+                data_filename=f"report_{topic}.md",
+                data_content=report_content,
+                data_mime_type="text/markdown",
+                data_description=f"Report on {topic}",
+                disposition=DataDisposition.RETURN,
+            ),
+        ],
+    )
+```
+
+### Reading Artifacts
+
+```python
+from solace_agent_mesh.agent.tools.artifact_types import Artifact
+
+async def analyze_file(
+    filename: str,
+    tool_context: ToolContext = None,
+) -> ToolResult:
+    """Analyze an artifact file."""
+    
+    # Load artifact
+    inv_context = tool_context._invocation_context
+    artifact_service = inv_context.artifact_service
+    
+    artifact = await artifact_service.load(
+        app_name=inv_context.session.app_name,
+        user_id=inv_context.session.user_id,
+        filename=filename,
+    )
+    
+    if not artifact:
+        return ToolResult.error(
+            message=f"Artifact '{filename}' not found",
+        )
+    
+    # Analyze content
+    analysis = analyze_content(artifact.content)
+    
+    return ToolResult.success(
+        message=f"Analyzed {filename}",
+        data={
+            "filename": filename,
+            "size": len(artifact.content),
+            "analysis": analysis,
+        },
+    )
+```
+
+### Artifact-Aware Tools
+
+Mark parameters that should be pre-loaded as artifacts:
+
+```python
+analyze_tool = BuiltinTool(
+    name="analyze_file",
+    implementation=analyze_file,
+    description="Analyze an artifact file.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "filename": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Name of artifact file to analyze",
+            ),
+        },
+        required=["filename"],
+    ),
+    artifact_args=["filename"],  # Pre-load as Artifact object
+)
+```
+
+When `artifact_args` is specified, the tool receives an `Artifact` object instead of a string:
+
+```python
+async def analyze_file(
+    filename: Artifact,  # Receives Artifact object, not string
+    tool_context: ToolContext = None,
+) -> ToolResult:
+    # Artifact is already loaded
+    content = filename.content
+    mime_type = filename.mime_type
+    
+    analysis = analyze_content(content)
+    
+    return ToolResult.success(
+        message=f"Analyzed {filename.filename}",
+        data={"analysis": analysis},
+    )
+```
+
+## Embed Resolution
+
+Tools can use embeds for dynamic values:
+
+### Raw String Arguments
+
+Some arguments should not resolve embeds (e.g., template strings):
+
+```python
+template_tool = BuiltinTool(
+    name="render_template",
+    implementation=render_template,
+    description="Render a Liquid template.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "template": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Liquid template string",
+            ),
+            "data_artifact": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Artifact containing template data",
+            ),
+        },
+        required=["template", "data_artifact"],
+    ),
+    raw_string_args=["template"],  # Don't resolve embeds in template
+)
+```
+
+## Built-in Tool Examples
+
+### Artifact Management Tools
+
+```python
+# List artifacts
+list_artifacts_tool = BuiltinTool(
+    name="list_artifacts",
+    implementation=list_artifacts,
+    description="List all available artifacts.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "pattern": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Optional glob pattern to filter results",
+            ),
+        },
+    ),
+)
+
+# Load artifact
+load_artifact_tool = BuiltinTool(
+    name="load_artifact",
+    implementation=load_artifact,
+    description="Load an artifact's content.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "filename": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Name of the artifact to load",
+            ),
+        },
+        required=["filename"],
+    ),
+)
+```
+
+### Data Analysis Tools
+
+```python
+# Analyze CSV
+analyze_csv_tool = BuiltinTool(
+    name="analyze_csv",
+    implementation=analyze_csv,
+    description="Analyze a CSV file and generate statistics.",
+    parameters=adk_types.Schema(
+        type=adk_types.Type.OBJECT,
+        properties={
+            "filename": adk_types.Schema(
+                type=adk_types.Type.STRING,
+                description="Name of CSV artifact",
+            ),
+            "columns": adk_types.Schema(
+                type=adk_types.Type.ARRAY,
+                items=adk_types.Schema(type=adk_types.Type.STRING),
+                description="Columns to analyze",
+            ),
+        },
+        required=["filename"],
+    ),
+    artifact_args=["filename"],
+)
+```
+
+## MCP Tool Integration
+
+MCP tools are automatically loaded from configured servers:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-filesystem"
+        - "/tmp/samv2"
+```
+
+All tools from the MCP server are automatically available to the agent.
+
+## Tool Configuration in Agent YAML
+
+### Using Built-in Tool Groups
+
+```yaml
+tools:
+  - tool_type: builtin-group
+    group_name: "artifact_management"
+```
+
+### Using Individual Built-in Tools
+
+```yaml
+tools:
+  - tool_type: builtin
+    tool_name: "create_artifact"
+  - tool_type: builtin
+    tool_name: "load_artifact"
+```
+
+### Mixing Tool Types
+
+```yaml
+tools:
+  # MCP tools
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "mcp-server-github"
+  
+  # Built-in tool group
+  - tool_type: builtin-group
+    group_name: "artifact_management"
+  
+  # Individual built-in tool
+  - tool_type: builtin
+    tool_name: "custom_analysis"
+```
+
+## Best Practices
+
+### 1. Clear Descriptions
+
+Provide detailed descriptions for the LLM:
+
+```python
+description="Search GitHub repositories by keyword. Returns repository names, "
+"descriptions, star counts, and URLs. Use for finding open source projects "
+"or code examples."
+```
+
+### 2. Comprehensive Parameters
+
+Define all parameters with descriptions:
+
+```python
+parameters=adk_types.Schema(
+    type=adk_types.Type.OBJECT,
+    properties={
+        "query": adk_types.Schema(
+            type=adk_types.Type.STRING,
+            description="Search query (e.g., 'machine learning python')",
+        ),
+        "language": adk_types.Schema(
+            type=adk_types.Type.STRING,
+            description="Filter by programming language (e.g., 'python', 'javascript')",
+        ),
+        "min_stars": adk_types.Schema(
+            type=adk_types.Type.INTEGER,
+            description="Minimum number of stars (default: 0)",
+        ),
+    },
+    required=["query"],
+),
+```
+
+### 3. Provide Examples
+
+```python
+examples=[
+    {
+        "query": "react component library",
+        "language": "javascript",
+        "min_stars": 1000,
+    },
+    {
+        "query": "data visualization python",
+        "language": "python",
+    },
+],
+```
+
+### 4. Error Handling
+
+Always return structured results:
+
+```python
+try:
+    result = await api_call()
+    return ToolResult.success("Operation completed", data=result)
+except Exception as e:
+    return ToolResult.error(f"Operation failed: {str(e)}")
+```
+
+### 5. Proper Categorization
+
+```python
+category="API Integration"  # Groups related tools
+```
+
+## Testing Tools
+
+Test tools independently:
+
+```python
+import pytest
+from google.adk.tools import ToolContext
+
+@pytest.mark.asyncio
+async def test_search_database():
+    # Create mock tool context
+    tool_context = MockToolContext()
+    
+    # Execute tool
+    result = await search_database(
+        query="test",
+        limit=5,
+        tool_context=tool_context,
+    )
+    
+    # Assert results
+    assert result.status == "success"
+    assert "results" in result.data
+    assert len(result.data["results"]) <= 5
+```
+
+## See Also
+
+- [Agent Configuration](/api/agent/configuration) - Configure tools in agent YAML
+- [Agent Callbacks](/api/agent/callbacks) - Intercept tool execution
+- [Agent Lifecycle](/api/agent/lifecycle) - Understand tool execution in lifecycle

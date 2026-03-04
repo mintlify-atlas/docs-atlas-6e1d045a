@@ -1,0 +1,493 @@
+---
+title: Audio Tools
+description: Tools for text-to-speech, audio transcription, and audio manipulation
+---
+
+Audio tools enable agents to generate speech from text, transcribe audio recordings, and manipulate audio files.
+
+## Tool: text_to_speech
+
+Converts text to speech using Gemini TTS API and saves as MP3 artifact.
+
+### Parameters
+
+<ParamField path="text" type="string" required>
+  The text to convert to speech.
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the output MP3. Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="voice_name" type="string" default={null}>
+  Specific voice name (e.g., "Kore", "Puck", "Zephyr"). Overrides gender and tone if provided.
+</ParamField>
+
+<ParamField path="gender" type="string" default={null}>
+  Desired gender for the voice: `"male"`, `"female"`, or `"neutral"`. Used if voice_name not provided.
+</ParamField>
+
+<ParamField path="tone" type="string" default={null}>
+  Tone preference (e.g., `"friendly"`, `"professional"`, `"warm"`). Used if voice_name not provided.
+</ParamField>
+
+<ParamField path="language" type="string" default="en-US">
+  Language code (e.g., `"en-US"`, `"fr-FR"`, `"ja-JP"`, `"es-US"`).
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.audio_tools import text_to_speech
+
+# Basic text-to-speech
+result = await text_to_speech(
+    text="Hello, welcome to Solace Agent Mesh!",
+    output_filename="greeting",
+    voice_name="Kore",
+    language="en-US",
+    tool_context=context,
+    tool_config={
+        "gemini_api_key": "your-api-key",
+        "model": "gemini-2.5-flash-preview-tts"
+    }
+)
+
+if result.status == "success":
+    audio_file = result.data_objects[0]
+    print(f"Audio created: {audio_file.name}")
+    print(f"Voice used: {result.data['voice_used']}")
+```
+
+### Voice Selection by Gender and Tone
+
+```python
+# Select voice by gender and tone
+result = await text_to_speech(
+    text="This is a professional announcement.",
+    gender="male",
+    tone="firm",
+    tool_context=context,
+    tool_config={"gemini_api_key": "your-key"}
+)
+```
+
+### Available Voices
+
+The tool includes 30+ voices categorized by gender and tone:
+
+<AccordionGroup>
+  <Accordion title="Male Voices">
+    - **Puck**: Upbeat, energetic
+    - **Charon**: Informative, clear
+    - **Orus**: Firm, authoritative
+    - **Enceladus**: Breathy, soft
+    - **Iapetus**: Clear, even
+    - **Algieba**: Smooth, professional
+    - **Alnilam**: Firm, strong
+    - **Achird**: Friendly, casual
+    - **Sadaltager**: Knowledgeable, educational
+  </Accordion>
+
+  <Accordion title="Female Voices">
+    - **Zephyr**: Bright, upbeat
+    - **Kore**: Firm, professional (default)
+    - **Leda**: Youthful, energetic
+    - **Aoede**: Breezy, light
+    - **Callirrhoe**: Easy-going, relaxed
+    - **Autonoe**: Bright, clear
+    - **Despina**: Smooth, gentle
+    - **Vindemiatrix**: Gentle, warm
+    - **Sulafat**: Warm, friendly
+  </Accordion>
+
+  <Accordion title="Neutral Voices">
+    - **Fenrir**: Excitable, energetic
+    - **Umbriel**: Easy-going, neutral
+    - **Rasalgethi**: Informative, balanced
+  </Accordion>
+</AccordionGroup>
+
+### Tone Mappings
+
+Voices are mapped to specific tones:
+
+- **Professional/Business**: Firm voices (Kore, Orus, Alnilam)
+- **Friendly/Warm**: Warm voices (Sulafat, Achird)
+- **Upbeat/Cheerful**: Bright voices (Zephyr, Puck, Laomedeia)
+- **Calm/Soft**: Gentle voices (Achernar, Vindemiatrix)
+- **Educational**: Knowledgeable voices (Sadaltager, Rasalgethi)
+
+### Supported Languages
+
+```python
+SUPPORTED_LANGUAGES = {
+    "english": "en-US",
+    "english_india": "en-IN",
+    "spanish": "es-US",
+    "french": "fr-FR",
+    "german": "de-DE",
+    "italian": "it-IT",
+    "japanese": "ja-JP",
+    "korean": "ko-KR",
+    "portuguese": "pt-BR",
+    "russian": "ru-RU",
+    "arabic": "ar-EG",
+    "hindi": "hi-IN",
+    "indonesian": "id-ID",
+    # ... and more
+}
+```
+
+## Tool: multi_speaker_text_to_speech
+
+Converts conversation text with speaker labels to speech using multiple voices.
+
+### Parameters
+
+<ParamField path="conversation_text" type="string" required>
+  Text with speaker labels (e.g., `"Speaker1: Hello\nSpeaker2: Hi there"`).
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the output MP3.
+</ParamField>
+
+<ParamField path="speaker_configs" type="array" default={null}>
+  List of speaker configurations. Each item contains:
+  - `name` (string): Speaker name as it appears in conversation_text
+  - `voice` (string, optional): Specific voice name
+  - `gender` (string, optional): Desired gender
+  - `tone` (string, optional): Desired tone
+</ParamField>
+
+<ParamField path="language" type="string" default="en-US">
+  Language code for the conversation.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.audio_tools import multi_speaker_text_to_speech
+
+# Conversation text with speaker labels
+conversation = """
+Alice: Good morning! How can I help you today?
+Bob: I'd like to learn about Solace Agent Mesh.
+Alice: Great! It's a powerful framework for building AI agents.
+Bob: That sounds interesting. Tell me more!
+"""
+
+# Configure voices for each speaker
+speaker_configs = [
+    {"name": "Alice", "voice": "Kore", "gender": "female", "tone": "professional"},
+    {"name": "Bob", "voice": "Puck", "gender": "male", "tone": "friendly"}
+]
+
+result = await multi_speaker_text_to_speech(
+    conversation_text=conversation,
+    speaker_configs=speaker_configs,
+    output_filename="conversation",
+    language="en-US",
+    tool_context=context,
+    tool_config={
+        "gemini_api_key": "your-key",
+        "model": "gemini-2.5-flash-preview-tts"
+    }
+)
+
+if result.status == "success":
+    print(f"Conversation audio: {result.data_objects[0].name}")
+    print(f"Speakers: {result.data['speakers_used']}")
+```
+
+### Auto Voice Selection
+
+If speaker_configs is not provided, default speakers are used:
+
+```python
+result = await multi_speaker_text_to_speech(
+    conversation_text="Speaker1: Hello\nSpeaker2: Hi there",
+    tool_context=context,
+    tool_config={"gemini_api_key": "your-key"}
+)
+# Uses default voices: Speaker1=Kore, Speaker2=Puck, Speaker3=Zephyr
+```
+
+## Tool: transcribe_audio
+
+Transcribes audio recordings and saves the transcription as a text artifact.
+
+### Parameters
+
+<ParamField path="input_audio" type="Artifact" required>
+  The input audio artifact (pre-loaded by framework). Supports `.wav` and `.mp3` formats.
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for transcription text file (without extension). Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="description" type="string" default={null}>
+  Optional description of the transcription for metadata.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.audio_tools import transcribe_audio
+
+# Transcribe audio file
+result = await transcribe_audio(
+    input_audio="meeting_recording.mp3",  # Artifact filename:version
+    output_filename="meeting_transcript",
+    description="Weekly team meeting transcription",
+    tool_context=context,
+    tool_config={
+        "model": "whisper-1",
+        "api_key": "your-openai-key",
+        "api_base": "https://api.openai.com"
+    }
+)
+
+if result.status == "success":
+    transcript_file = result.data_objects[0]
+    word_count = result.data['transcription_word_count']
+    print(f"Transcribed {word_count} words")
+```
+
+### Configuration
+
+```yaml
+builtin_tools:
+  - name: transcribe_audio
+    config:
+      model: whisper-1
+      api_key: ${OPENAI_API_KEY}
+      api_base: https://api.openai.com
+```
+
+## Tool: concatenate_audio
+
+Combines multiple audio artifacts into a single audio file with customizable pauses.
+
+### Parameters
+
+<ParamField path="clips_to_join" type="array" required>
+  Ordered list of clip objects. Each object contains:
+  - `filename` (string): Artifact filename (with optional `:version`)
+  - `pause_after_ms` (integer, optional): Silence duration in ms after this clip
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the combined audio artifact.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.audio_tools import concatenate_audio
+
+# Combine multiple audio clips
+clips = [
+    {"filename": "intro.mp3", "pause_after_ms": 500},
+    {"filename": "main_content.mp3:0", "pause_after_ms": 1000},
+    {"filename": "outro.mp3", "pause_after_ms": 0}
+]
+
+result = await concatenate_audio(
+    clips_to_join=clips,
+    output_filename="complete_audio",
+    tool_context=context,
+    tool_config={"default_pause_ms": 250}
+)
+
+if result.status == "success":
+    print(f"Combined {result.data['clips_count']} clips")
+```
+
+### Pause Duration Guidelines
+
+- **Conversation pauses**: 250ms (default)
+- **Sentence boundaries**: 500ms
+- **Topic transitions**: 1000ms
+- **Section breaks**: 1500-2000ms
+
+## Tool: select_voice
+
+Selects a suitable voice name based on criteria. Useful for maintaining consistent voices across multiple TTS calls.
+
+### Parameters
+
+<ParamField path="gender" type="string" default={null}>
+  Desired gender: `"male"`, `"female"`, or `"neutral"`.
+</ParamField>
+
+<ParamField path="tone" type="string" default={null}>
+  Tone preference (e.g., `"friendly"`, `"professional"`).
+</ParamField>
+
+<ParamField path="exclude_voices" type="array" default={null}>
+  List of voice names to exclude from selection.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.audio_tools import select_voice
+
+# Select a professional female voice
+result = await select_voice(
+    gender="female",
+    tone="professional",
+    tool_context=context
+)
+
+if result.status == "success":
+    voice_name = result.data["voice_name"]
+    
+    # Use the selected voice for multiple TTS calls
+    for text in sentences:
+        await text_to_speech(
+            text=text,
+            voice_name=voice_name,
+            tool_context=context
+        )
+```
+
+## Configuration Examples
+
+### Basic Configuration
+
+```yaml
+builtin_tools:
+  - name: text_to_speech
+    config:
+      gemini_api_key: ${GEMINI_API_KEY}
+      model: gemini-2.5-flash-preview-tts
+      language: en-US
+      voice_name: Kore  # Default voice
+```
+
+### Multi-Speaker Configuration
+
+```yaml
+builtin_tools:
+  - name: multi_speaker_text_to_speech
+    config:
+      gemini_api_key: ${GEMINI_API_KEY}
+      model: gemini-2.5-flash-preview-tts
+      default_speakers:
+        - name: Host
+          voice: Kore
+          gender: female
+          tone: professional
+        - name: Guest
+          voice: Puck
+          gender: male
+          tone: friendly
+```
+
+### Transcription Configuration
+
+```yaml
+builtin_tools:
+  - name: transcribe_audio
+    config:
+      model: whisper-1
+      api_key: ${OPENAI_API_KEY}
+      api_base: https://api.openai.com
+```
+
+## Response Formats
+
+### Text-to-Speech Response
+
+```json
+{
+  "status": "success",
+  "message": "Text-to-speech audio generated successfully.",
+  "data": {
+    "voice_used": "Kore",
+    "language_used": "en-US"
+  },
+  "data_objects": [
+    {
+      "name": "greeting.mp3",
+      "mime_type": "audio/mpeg",
+      "description": "Text-to-speech audio. Voice: Kore.",
+      "metadata": {
+        "source_text": "Hello, welcome...",
+        "voice_name": "Kore",
+        "language": "en-US",
+        "model": "gemini-2.5-flash-preview-tts"
+      }
+    }
+  ]
+}
+```
+
+### Transcription Response
+
+```json
+{
+  "status": "success",
+  "message": "Audio transcribed successfully.",
+  "data": {
+    "audio_filename": "meeting.mp3",
+    "audio_version": 0,
+    "transcription_word_count": 1523,
+    "transcription_char_count": 8941
+  },
+  "data_objects": [
+    {
+      "name": "meeting_transcription.txt",
+      "mime_type": "text/plain",
+      "description": "Transcribed from audio file 'meeting.mp3'",
+      "preview": "Good morning everyone. Let's begin today's meeting..."
+    }
+  ]
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Voice Selection">
+    - Use `select_voice` to maintain consistency across multiple TTS calls
+    - Choose voices appropriate for content and audience
+    - Test different tones to find the right fit
+  </Accordion>
+
+  <Accordion title="Multi-Speaker Conversations">
+    - Use distinct voices for different speakers
+    - Label speakers consistently in conversation text
+    - Add appropriate pauses between speaker turns (default 250ms works well)
+  </Accordion>
+
+  <Accordion title="Audio Quality">
+    - Keep text input clear and properly punctuated
+    - Break very long text into multiple calls for better pacing
+    - Use SSML markup when available for fine control
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+```python
+result = await text_to_speech(text=text, tool_context=context)
+
+if result.status == "error":
+    if "api_key" in result.message.lower():
+        print("API key not configured")
+    elif "quota" in result.message.lower():
+        print("API quota exceeded")
+    else:
+        print(f"Error: {result.message}")
+```
+
+## See Also
+
+- [Image Tools](/built-in-tools/image-tools) - Generate and edit images
+- [Artifact Management](/built-in-tools/artifact-management) - Manage audio artifacts
+- [Configuration Guide](/api/agent/tools) - Configure audio tools

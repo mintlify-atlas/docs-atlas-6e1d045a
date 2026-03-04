@@ -1,0 +1,613 @@
+---
+title: SQL Database Integration
+description: Connect your agents to SQL databases to query and analyze data using natural language
+---
+
+# SQL Database Integration
+
+This guide shows you how to integrate SQL databases with Solace Agent Mesh, enabling agents to query databases using natural language and return structured results.
+
+## Overview
+
+The SQL database integration allows you to:
+- Connect to SQLite, PostgreSQL, MySQL, and other SQL databases
+- Query databases using natural language
+- Automatically import CSV data into databases
+- Return query results as structured data or downloadable artifacts
+- Handle large result sets efficiently
+
+## Prerequisites
+
+Before starting:
+
+- [Install Solace Agent Mesh](/installation-and-configuration/installation)
+- [Create a new project](/quickstart)
+- Have access to a SQL database (local or remote)
+
+## Quick Start with SQLite
+
+<Steps>
+
+### Step 1: Install SQL Database Plugin
+
+Add the SQL database plugin to your project:
+
+```bash
+sam plugin add my-database --plugin sam-sql-database
+```
+
+This creates `configs/agents/my-database.yaml`.
+
+### Step 2: Download Example Data (Optional)
+
+For testing, download sample data for a fictional coffee company:
+
+```bash
+# Using wget
+wget https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/raw/refs/heads/main/sam-sql-database/example-data/abc_coffee_co.zip
+
+# Or using curl
+curl -LO https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/raw/refs/heads/main/sam-sql-database/example-data/abc_coffee_co.zip
+
+# Extract
+unzip abc_coffee_co.zip
+```
+
+### Step 3: Configure Environment Variables
+
+Add to your `.env` file:
+
+```bash
+MY_DATABASE_DB_TYPE=sqlite
+MY_DATABASE_DB_NAME=my_database.db
+MY_DATABASE_DB_PURPOSE="Company database for sales and operations"
+MY_DATABASE_DB_DESCRIPTION="Contains customer orders, products, and inventory data"
+```
+
+### Step 4: Update Agent Configuration
+
+Edit `configs/agents/my-database.yaml` to specify the CSV directory:
+
+```yaml
+agent_init_function:
+  module: "sam_sql_database.lifecycle"
+  name: "initialize_sql_agent"
+  config:
+    db_type: "${MY_DATABASE_DB_TYPE}"
+    db_name: "${MY_DATABASE_DB_NAME}"
+    database_purpose: "${MY_DATABASE_DB_PURPOSE}"
+    data_description: "${MY_DATABASE_DB_DESCRIPTION}"
+    csv_directories:
+      - "abc_coffee_co"  # Path to your extracted data
+```
+
+### Step 5: Run the Agent
+
+Start your database agent:
+
+```bash
+sam run configs/agents/my-database.yaml
+```
+
+The agent will:
+1. Create/connect to the SQLite database
+2. Import CSV files from the specified directory
+3. Detect the database schema automatically
+4. Register with the agent mesh
+
+### Step 6: Query the Database
+
+Interact via any gateway (e.g., Web UI at `http://localhost:8000`):
+
+- "How many customers are in the database?"
+- "What are the top 5 best-selling products?"
+- "Show me all orders from last month"
+- "Create a report of sales by region"
+
+</Steps>
+
+## Complete Configuration Example
+
+Here's a production-ready database agent configuration:
+
+```yaml database_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: database_agent.log
+
+!include shared_config.yaml
+
+apps:
+  - name: database_agent_app
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      agent_name: "DatabaseAgent"
+      display_name: "SQL Database Agent"
+      supports_streaming: false
+      model: *general_model
+      
+      instruction: |
+        You are an expert SQL assistant for the company database.
+        
+        Your capabilities:
+        - Translate natural language questions into accurate SQL queries
+        - Execute queries and return results
+        - Handle errors by analyzing and correcting SQL
+        - Save large result sets as artifacts
+        
+        Query workflow:
+        1. Understand the user's question
+        2. Review the database schema and example queries
+        3. Generate appropriate SQL query
+        4. Call 'execute_sql_query' tool
+        5. If error occurs, analyze and retry with corrected SQL
+        6. Format results clearly for the user
+        7. If results are saved as artifact, inform the user
+        
+        Always use the 'execute_sql_query' tool to interact with the database.
+        Never make assumptions about table structure - refer to the schema.
+      
+      # Agent initialization with database setup
+      agent_init_function:
+        module: "sam_sql_database.lifecycle"
+        name: "initialize_sql_agent"
+        config:
+          db_type: "${DATABASE_DB_TYPE}"
+          db_name: "${DATABASE_DB_NAME}"
+          database_purpose: "${DATABASE_DB_PURPOSE}"
+          data_description: "${DATABASE_DB_DESCRIPTION}"
+          
+          # Auto-detect database schema
+          auto_detect_schema: true
+          
+          # Import CSV data on startup
+          csv_directories:
+            - "data/imports"
+          
+          # Example queries to guide the LLM
+          query_examples:
+            - natural_language: "Show all customers from New York"
+              sql_query: "SELECT * FROM customers WHERE city = 'New York';"
+            
+            - natural_language: "What are the top 5 best-selling products?"
+              sql_query: |
+                SELECT product_name, SUM(quantity) as total_sold 
+                FROM order_items 
+                JOIN products ON order_items.product_id = products.id 
+                GROUP BY product_name 
+                ORDER BY total_sold DESC 
+                LIMIT 5;
+            
+            - natural_language: "Calculate total revenue by month"
+              sql_query: |
+                SELECT 
+                  strftime('%Y-%m', order_date) as month,
+                  SUM(total_amount) as revenue
+                FROM orders
+                GROUP BY month
+                ORDER BY month DESC;
+      
+      agent_cleanup_function:
+        module: "sam_sql_database.lifecycle"
+        name: "cleanup_sql_agent_resources"
+      
+      # SQL query tool
+      tools:
+        - tool_type: python
+          component_module: "sam_sql_database.tools"
+          function_name: "execute_sql_query"
+      
+      session_service:
+        <<: *default_session_service
+      
+      artifact_service:
+        <<: *default_artifact_service
+      
+      # Agent card for discovery
+      agent_card:
+        description: |
+          SQL Database Agent with access to company data including customers,
+          orders, products, inventory, and sales history. Can answer questions
+          about business metrics, customer analytics, and operational data.
+        
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        
+        skills:
+          - id: "sql_query"
+            name: "Database Query"
+            description: "Query company database for customers, orders, products, and sales data"
+            examples:
+              - "How many orders were placed last month?"
+              - "Show me the top customers by revenue"
+              - "What products are low in stock?"
+              - "Generate a sales report for Q4"
+            tags: ["database", "sql", "analytics"]
+          
+          - id: "data_analysis"
+            name: "Data Analysis"
+            description: "Analyze trends and patterns in business data"
+            examples:
+              - "What is the average order value?"
+              - "Show sales trends over the last 6 months"
+              - "Compare product performance by category"
+            tags: ["analytics", "reporting"]
+      
+      agent_card_publishing: { interval_seconds: 30 }
+      agent_discovery: { enabled: true }
+      
+      inter_agent_communication:
+        allow_list: ["*"]
+        request_timeout_seconds: 60
+```
+
+## Connecting to PostgreSQL
+
+For PostgreSQL databases:
+
+### Environment Variables
+
+```bash
+DATABASE_DB_TYPE=postgresql
+DATABASE_DB_NAME=mydb
+DATABASE_DB_HOST=localhost
+DATABASE_DB_PORT=5432
+DATABASE_DB_USER=postgres
+DATABASE_DB_PASSWORD=mypassword
+DATABASE_DB_PURPOSE="Production database"
+DATABASE_DB_DESCRIPTION="Customer and order data"
+```
+
+### Configuration
+
+```yaml
+agent_init_function:
+  config:
+    db_type: "${DATABASE_DB_TYPE}"
+    db_name: "${DATABASE_DB_NAME}"
+    db_host: "${DATABASE_DB_HOST}"
+    db_port: "${DATABASE_DB_PORT}"
+    db_user: "${DATABASE_DB_USER}"
+    db_password: "${DATABASE_DB_PASSWORD}"
+    database_purpose: "${DATABASE_DB_PURPOSE}"
+    data_description: "${DATABASE_DB_DESCRIPTION}"
+    auto_detect_schema: true
+```
+
+## Connecting to MySQL
+
+For MySQL databases:
+
+### Environment Variables
+
+```bash
+DATABASE_DB_TYPE=mysql
+DATABASE_DB_NAME=mydb
+DATABASE_DB_HOST=localhost
+DATABASE_DB_PORT=3306
+DATABASE_DB_USER=root
+DATABASE_DB_PASSWORD=mypassword
+DATABASE_DB_PURPOSE="Production database"
+DATABASE_DB_DESCRIPTION="E-commerce data"
+```
+
+## Working with CSV Data
+
+### Automatic CSV Import
+
+The agent automatically imports CSV files on startup:
+
+```yaml
+agent_init_function:
+  config:
+    csv_directories:
+      - "data/customers"
+      - "data/orders"
+      - "data/products"
+```
+
+<Note>
+CSV filenames become table names (e.g., `customers.csv` → `customers` table).
+</Note>
+
+### CSV File Requirements
+
+- First row should contain column names
+- Use standard CSV format (comma-separated)
+- Supported encodings: UTF-8, Latin-1
+- Data types are inferred automatically
+
+### Example CSV Structure
+
+```csv customers.csv
+id,name,email,city,signup_date
+1,John Doe,john@example.com,New York,2024-01-15
+2,Jane Smith,jane@example.com,Los Angeles,2024-02-20
+3,Bob Johnson,bob@example.com,Chicago,2024-03-10
+```
+
+## Query Examples
+
+### Basic Queries
+
+```
+"How many customers do we have?"
+"List all products"
+"Show orders from last week"
+"What is the total revenue?"
+```
+
+### Aggregations
+
+```
+"Calculate average order value"
+"Count orders by status"
+"Sum revenue by product category"
+"Find the customer with most orders"
+```
+
+### Date-based Queries
+
+```
+"Show sales from January 2024"
+"What were last month's top products?"
+"Compare revenue year-over-year"
+"List orders placed today"
+```
+
+### Joins and Complex Queries
+
+```
+"Show customer names with their order totals"
+"List products that have never been ordered"
+"Find customers who haven't ordered in 90 days"
+"Calculate customer lifetime value"
+```
+
+### Reports
+
+```
+"Create a monthly sales report"
+"Generate customer demographics summary"
+"Produce inventory status report"
+"Make a top products report with charts"
+```
+
+## Handling Large Results
+
+The SQL tool automatically saves large result sets as artifacts:
+
+- **Small results (≤100 rows)**: Returned directly in response
+- **Large results (>100 rows)**: Saved as CSV artifact
+- **Preview**: First 5 rows shown with download link
+
+```yaml
+tools:
+  - tool_type: python
+    component_module: "sam_sql_database.tools"
+    function_name: "execute_sql_query"
+    config:
+      max_inline_rows: 100  # Customize threshold
+```
+
+## Agent Card Configuration
+
+The agent card is crucial for discovery by other agents:
+
+```yaml
+agent_card:
+  description: |
+    [Business domain] Database Agent - Access to [data scope].
+    Can answer questions about [capabilities].
+  
+  skills:
+    - id: "sql_query"
+      name: "[Descriptive Name]"
+      description: "[What data is available]"
+      examples:
+        - "[Example question 1]"
+        - "[Example question 2]"
+      tags: ["database", "domain-specific-tags"]
+```
+
+<Tip>
+**Agent Card Best Practices:**
+
+1. **Be Specific**: Clearly describe what data is available
+2. **Include Examples**: Show the types of questions that work well
+3. **Mention Scope**: Indicate data ranges, business domains, time periods
+4. **Use Tags**: Add relevant tags for easier discovery
+5. **Update Regularly**: Keep the description current as schema evolves
+</Tip>
+
+## Advanced Features
+
+### Custom Query Examples
+
+Provide example queries to improve accuracy:
+
+```yaml
+agent_init_function:
+  config:
+    query_examples:
+      - natural_language: "Show inactive customers"
+        sql_query: |
+          SELECT * FROM customers 
+          WHERE last_order_date < DATE('now', '-90 days');
+      
+      - natural_language: "Revenue by sales rep"
+        sql_query: |
+          SELECT 
+            e.name as sales_rep,
+            SUM(o.total_amount) as revenue
+          FROM orders o
+          JOIN employees e ON o.sales_rep_id = e.id
+          GROUP BY e.name
+          ORDER BY revenue DESC;
+```
+
+### Schema Detection
+
+Automatic schema detection can be disabled:
+
+```yaml
+agent_init_function:
+  config:
+    auto_detect_schema: false
+    # Provide schema manually in instructions instead
+```
+
+### Read-Only Mode
+
+Restrict to SELECT queries only (recommended for production):
+
+```yaml
+tools:
+  - tool_type: python
+    component_module: "sam_sql_database.tools"
+    function_name: "execute_sql_query"
+    config:
+      read_only: true  # Reject INSERT, UPDATE, DELETE
+```
+
+## Security Best Practices
+
+<Warning>
+**Security Considerations:**
+
+1. **Read-Only Access**: Use read-only database users when possible
+2. **Credentials**: Store database credentials in environment variables
+3. **Network Security**: Use SSL/TLS for remote database connections
+4. **Query Validation**: The agent validates SQL before execution
+5. **Access Control**: Use SAM's RBAC to control who can query the database
+6. **Audit Logging**: Enable detailed logging for compliance
+</Warning>
+
+### Database User Permissions
+
+Create a dedicated read-only database user:
+
+```sql PostgreSQL
+-- Create read-only user
+CREATE USER sam_agent WITH PASSWORD 'secure_password';
+
+-- Grant read access
+GRANT CONNECT ON DATABASE mydb TO sam_agent;
+GRANT USAGE ON SCHEMA public TO sam_agent;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO sam_agent;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO sam_agent;
+
+-- Future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON TABLES TO sam_agent;
+```
+
+## Troubleshooting
+
+<Warning>
+**Common Issues:**
+
+1. **Connection refused**: Check database host, port, and credentials
+2. **CSV import fails**: Verify file format and encoding (UTF-8)
+3. **Inaccurate queries**: Add more query examples to the configuration
+4. **Schema not detected**: Ensure database user has appropriate permissions
+5. **Timeout errors**: Increase `request_timeout_seconds` for complex queries
+</Warning>
+
+### Enable Debug Logging
+
+```yaml
+log:
+  stdout_log_level: DEBUG
+  log_file_level: DEBUG
+  log_file: database_debug.log
+```
+
+### Test Database Connection
+
+Test connectivity outside SAM:
+
+```python
+import sqlite3
+
+# SQLite
+conn = sqlite3.connect('my_database.db')
+print(conn.execute('SELECT sqlite_version();').fetchone())
+conn.close()
+```
+
+```python
+import psycopg2
+
+# PostgreSQL
+conn = psycopg2.connect(
+    host="localhost",
+    database="mydb",
+    user="postgres",
+    password="mypassword"
+)
+print(conn.get_dsn_parameters())
+conn.close()
+```
+
+### Validate SQL Queries
+
+Check generated SQL in logs:
+
+```bash
+grep "Executing SQL" database_debug.log
+```
+
+## Performance Optimization
+
+<Tip>
+**Performance Tips:**
+
+1. **Indexes**: Create indexes on frequently queried columns
+2. **Query Examples**: Provide optimized query patterns
+3. **Result Limits**: The agent automatically limits large result sets
+4. **Connection Pooling**: For high-volume, use connection pooling
+5. **Caching**: Consider caching for frequently requested queries
+6. **Partitioning**: Partition large tables by date or category
+</Tip>
+
+### Database Indexes
+
+```sql
+-- Add indexes for common queries
+CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX idx_customers_city ON customers(city);
+CREATE INDEX idx_products_category ON products(category);
+```
+
+## Integration with Other Agents
+
+Combine database queries with other agent capabilities:
+
+```yaml orchestrator_instruction
+When users ask for data analysis:
+1. Use DatabaseAgent to query the data
+2. Use DataVisualizationAgent to create charts
+3. Use ReportingAgent to generate formatted reports
+4. Return the complete analysis to the user
+```
+
+## Next Steps
+
+- [Creating Custom Agents](/guides/creating-custom-agents) - Build specialized database agents
+- [Creating Custom Tools](/guides/creating-custom-tools) - Add custom data processing tools
+- [Workflow Development](/guides/workflow-development) - Orchestrate data pipelines
+- [Slack Integration](/guides/slack-integration) - Query databases from Slack
+
+## Real-World Examples
+
+Explore database integration examples:
+
+- `examples/agents/` - Check for SQL agent examples in the source
+- [SQL Database Plugin](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/tree/main/sam-sql-database)

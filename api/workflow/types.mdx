@@ -1,0 +1,459 @@
+---
+title: 'Workflow Node Types'
+description: 'Reference for all workflow node types: agent, switch, map, loop, and workflow'
+icon: 'diagram-project'
+---
+
+## Overview
+
+Workflows are composed of **nodes** arranged in a Directed Acyclic Graph (DAG). Each node has a specific type that determines its execution behavior.
+
+## Node Types
+
+<CardGroup cols={2}>
+  <Card title="Agent Node" icon="robot">
+    Invoke an agent to perform a task
+  </Card>
+  <Card title="Switch Node" icon="code-branch">
+    Multi-way conditional branching
+  </Card>
+  <Card title="Map Node" icon="list">
+    Parallel iteration over array items
+  </Card>
+  <Card title="Loop Node" icon="rotate">
+    While-loop iteration until condition
+  </Card>
+  <Card title="Workflow Node" icon="diagram-project">
+    Invoke a sub-workflow
+  </Card>
+</CardGroup>
+
+## Agent Node
+
+Invokes an agent to perform a task. The most common node type.
+
+```yaml
+nodes:
+  - id: validate_order
+    type: agent
+    agent_name: "OrderValidator"          # Agent to invoke
+    depends_on: [previous_step]           # Optional dependencies
+    
+    # Input mapping (supports templates)
+    input:
+      order_id: "{{workflow.input.order_id}}"
+      items: "{{workflow.input.items}}"
+    
+    # Optional: Workflow-specific guidance
+    instruction: |
+      Validate this order as the first step in the pipeline.
+      Check for required fields and flag any issues.
+    
+    # Optional: Schema overrides
+    input_schema_override:
+      type: object
+      properties:
+        order_id: { type: string, minLength: 3 }
+      required: [order_id]
+    
+    output_schema_override:
+      type: object
+      properties:
+        valid: { type: boolean }
+        errors: { type: array }
+    
+    # Argo-compatible features
+    when: "{{previous_step.output.needs_validation}} == true"
+    timeout: "5m"
+    retry_strategy:
+      limit: 3
+      retry_policy: "OnFailure"
+```
+
+<ParamField path="id" type="string" required>
+  Unique node identifier. Used in dependency references and output mapping.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Must be `"agent"`.
+</ParamField>
+
+<ParamField path="agent_name" type="string" required>
+  Name of the agent to invoke. Must match an agent's registered name in the namespace.
+</ParamField>
+
+<ParamField path="depends_on" type="array">
+  Array of node IDs this node depends on. Node waits for all dependencies to complete.
+  
+  **Argo-compatible alias:** `dependencies`
+</ParamField>
+
+<ParamField path="input" type="object">
+  Input mapping. Keys are agent input field names, values support template expressions.
+  
+  If omitted, input is automatically inferred from dependencies.
+</ParamField>
+
+<ParamField path="instruction" type="string">
+  Optional workflow-specific guidance sent to the agent. Provides context for how the agent should process the request.
+  
+  Supports template expressions like `{{workflow.input.context}}`.
+</ParamField>
+
+<ParamField path="input_schema_override" type="object">
+  Override the agent's input schema for this specific invocation. Useful for adding workflow-specific validation.
+</ParamField>
+
+<ParamField path="output_schema_override" type="object">
+  Override the agent's output schema expectations for this specific invocation.
+</ParamField>
+
+<ParamField path="when" type="string">
+  Conditional execution expression (Argo-style). Node only executes if expression evaluates to `true`.
+  
+  ```yaml
+  when: "{{validate.output.valid}} == true"
+  ```
+</ParamField>
+
+<ParamField path="timeout" type="string">
+  Node-specific timeout. Format: `"30s"`, `"5m"`, `"1h"`.
+  
+  Overrides `default_node_timeout_seconds`.
+</ParamField>
+
+<ParamField path="retry_strategy" type="object">
+  Node-specific retry configuration. Overrides workflow-level `retry_strategy`.
+</ParamField>
+
+## Switch Node
+
+Multi-way conditional branching. Evaluates cases in order; first match wins.
+
+```yaml
+nodes:
+  - id: approval_decision
+    type: switch
+    depends_on: [calculate_price]
+    
+    cases:
+      # Case 1: High value orders
+      - condition: "{{calculate_price.output.total}} > 1000"
+        node: manual_approval
+      
+      # Case 2: Medium value orders
+      - condition: "{{calculate_price.output.total}} > 500"
+        node: supervisor_approval
+    
+    # Default case (if no conditions match)
+    default: auto_approval
+  
+  # Branch nodes must depend on the switch node
+  - id: manual_approval
+    type: agent
+    agent_name: "ManualApprover"
+    depends_on: [approval_decision]
+  
+  - id: supervisor_approval
+    type: agent
+    agent_name: "SupervisorApprover"
+    depends_on: [approval_decision]
+  
+  - id: auto_approval
+    type: agent
+    agent_name: "AutoApprover"
+    depends_on: [approval_decision]
+```
+
+<ParamField path="type" type="string" required>
+  Must be `"switch"`.
+</ParamField>
+
+<ParamField path="cases" type="array" required>
+  Ordered list of condition/node pairs. First matching condition wins.
+  
+  Each case has:
+  - `condition` (or `when`): Boolean expression
+  - `node` (or `then`): Node ID to execute if condition matches
+</ParamField>
+
+<ParamField path="default" type="string">
+  Node ID to execute if no cases match. If omitted and no cases match, the switch completes with no action.
+</ParamField>
+
+### Condition Expressions
+
+Switch conditions support:
+
+- **Comparisons**: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in`
+- **Boolean operators**: `and`, `or`, `not`
+- **Literals**: strings, numbers, `true`, `false`, `null`
+- **Template expressions**: `{{node.output.field}}`
+
+```yaml
+cases:
+  # String comparison
+  - condition: "'{{workflow.input.priority}}' == 'high'"
+    node: high_priority_handler
+  
+  # Numeric comparison
+  - condition: "{{price.output.total}} > 500"
+    node: expensive_handler
+  
+  # Boolean field
+  - condition: "{{validate.output.needs_review}} == true"
+    node: review_handler
+  
+  # Complex expression
+  - condition: "{{price.output.total}} > 100 and '{{customer.output.tier}}' == 'gold'"
+    node: vip_handler
+```
+
+## Map Node
+
+Parallel iteration over array items. Executes a node once per item with optional concurrency control.
+
+```yaml
+nodes:
+  - id: process_items
+    type: map
+    depends_on: [validate_order]
+    
+    # SAM syntax
+    items: "{{workflow.input.items}}"
+    
+    # OR Argo-compatible aliases:
+    # with_items: ["item1", "item2", "item3"]  # Static list
+    # with_param: "{{previous_step.output.items}}"  # Dynamic array
+    
+    node: process_single_item           # Inner node to execute
+    max_items: 100                      # Safety limit
+    concurrency_limit: 5                # Max parallel executions
+  
+  # Inner node - executed once per item
+  - id: process_single_item
+    type: agent
+    agent_name: "ItemProcessor"
+    input:
+      item_id: "{{_map_item.id}}"        # Current item
+      index: "{{_map_index}}"            # Current index
+```
+
+<ParamField path="type" type="string" required>
+  Must be `"map"`.
+</ParamField>
+
+<ParamField path="items" type="string | array">
+  Array to iterate over. Can be:
+  - Template expression: `"{{workflow.input.items}}"`
+  - Static array: `[1, 2, 3]`
+  
+  **Argo-compatible aliases:**
+  - `with_items`: Static list
+  - `with_param`: Dynamic template expression
+</ParamField>
+
+<ParamField path="node" type="string" required>
+  Node ID to execute for each item. This is the "inner node" of the map.
+</ParamField>
+
+<ParamField path="max_items" type="integer" default="100">
+  Maximum items to process (safety limit). Workflow fails if array exceeds this.
+</ParamField>
+
+<ParamField path="concurrency_limit" type="integer">
+  Maximum concurrent executions. `null` means unlimited parallelism.
+  
+  - `1`: Sequential execution
+  - `5`: Up to 5 items processed in parallel
+  - `null`: All items processed in parallel
+</ParamField>
+
+### Map Variables
+
+Inner nodes can access map-specific variables:
+
+- `{{_map_item}}`: Current item object/value
+- `{{_map_item.field}}`: Field from current item
+- `{{_map_index}}`: Current iteration index (0-based)
+
+**Argo-compatible alias:** `{{item}}` → `{{_map_item}}`
+
+## Loop Node
+
+While-loop iteration. Executes a node repeatedly until a condition becomes false.
+
+```yaml
+nodes:
+  - id: poll_status
+    type: loop
+    depends_on: [start_job]
+    
+    node: check_status                  # Inner node to execute
+    condition: "{{check_status.output.ready}} == false"
+    max_iterations: 10                  # Safety limit
+    delay: "5s"                         # Delay between iterations
+  
+  # Inner node - executed each iteration
+  - id: check_status
+    type: agent
+    agent_name: "StatusChecker"
+    input:
+      job_id: "{{workflow.input.job_id}}"
+      iteration: "{{_loop_iteration}}"   # Current iteration count
+```
+
+<ParamField path="type" type="string" required>
+  Must be `"loop"`.
+</ParamField>
+
+<ParamField path="node" type="string" required>
+  Node ID to execute repeatedly. This is the "inner node" of the loop.
+</ParamField>
+
+<ParamField path="condition" type="string" required>
+  Continue looping **while** this expression is `true`.
+  
+  Loop stops when condition evaluates to `false` or `max_iterations` is reached.
+  
+  **Note:** On first iteration (iteration 0), condition is **not checked** - loop always runs at least once (do-while behavior).
+</ParamField>
+
+<ParamField path="max_iterations" type="integer" default="100">
+  Maximum number of iterations (safety limit). Loop stops when reached even if condition is still true.
+</ParamField>
+
+<ParamField path="delay" type="string">
+  Delay between loop iterations. Format: `"5s"`, `"1m"`, `"1h"`, `"1d"`.
+  
+  No delay on first iteration.
+</ParamField>
+
+### Loop Variables
+
+Inner nodes can access:
+
+- `{{_loop_iteration}}`: Current iteration count (0-based)
+
+### Example: Polling Pattern
+
+```yaml
+# Poll every 10 seconds until job completes
+- id: wait_for_completion
+  type: loop
+  node: check_job
+  condition: "{{check_job.output.status}} != 'completed'"
+  max_iterations: 60  # Max 10 minutes (60 * 10s)
+  delay: "10s"
+
+- id: check_job
+  type: agent
+  agent_name: "JobMonitor"
+  input:
+    job_id: "{{workflow.input.job_id}}"
+```
+
+## Workflow Node
+
+Invokes another workflow as a sub-workflow. Workflows register as agents, so this uses the same invocation mechanism.
+
+```yaml
+nodes:
+  - id: process_payment
+    type: workflow
+    workflow_name: "PaymentProcessingWorkflow"  # Target workflow name
+    depends_on: [validate_order]
+    
+    input:
+      order_id: "{{workflow.input.order_id}}"
+      amount: "{{price.output.total}}"
+    
+    instruction: |
+      Process payment for this order.
+      Use the calculated total from the pricing step.
+    
+    # Same options as agent nodes
+    input_schema_override: { ... }
+    output_schema_override: { ... }
+    when: "{{price.output.total}} > 0"
+    timeout: "10m"
+    retry_strategy:
+      limit: 3
+```
+
+<ParamField path="type" type="string" required>
+  Must be `"workflow"`.
+</ParamField>
+
+<ParamField path="workflow_name" type="string" required>
+  Name of the workflow to invoke. Must match a registered workflow in the namespace.
+</ParamField>
+
+All other fields are identical to **Agent Node** configuration.
+
+### Recursion Prevention
+
+- **Direct recursion** is prevented: A workflow cannot invoke itself
+- **Indirect recursion** is controlled by `max_call_depth` (default: 10)
+
+## Common Node Fields
+
+All node types support these fields:
+
+<ParamField path="id" type="string" required>
+  Unique node identifier within the workflow.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Node type: `"agent"`, `"switch"`, `"map"`, `"loop"`, or `"workflow"`.
+</ParamField>
+
+<ParamField path="depends_on" type="array">
+  Array of node IDs this node depends on. Execution waits for all dependencies to complete.
+  
+  **Argo-compatible alias:** `dependencies`
+</ParamField>
+
+## Parallelism
+
+Workflows support **implicit parallel execution** through dependency-based scheduling:
+
+```yaml
+nodes:
+  # Step 1: Single entry point
+  - id: validate
+    type: agent
+    agent_name: "Validator"
+  
+  # Steps 2a and 2b: Run in parallel (both depend on validate)
+  - id: enrich_customer
+    type: agent
+    agent_name: "CustomerEnricher"
+    depends_on: [validate]
+  
+  - id: check_inventory
+    type: agent
+    agent_name: "InventoryChecker"
+    depends_on: [validate]
+  
+  # Step 3: Implicit join (waits for both parallel branches)
+  - id: finalize
+    type: agent
+    agent_name: "Finalizer"
+    depends_on: [enrich_customer, check_inventory]
+```
+
+The DAG executor automatically:
+- **Forks** when multiple nodes have the same dependency
+- **Joins** when a node depends on multiple parallel branches
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflow Configuration" icon="file-code" href="/api/workflow/configuration">
+    Complete YAML configuration schema
+  </Card>
+  <Card title="Workflow Execution" icon="play" href="/api/workflow/execution">
+    DAG execution model and scheduling
+  </Card>
+</CardGroup>

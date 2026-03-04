@@ -1,0 +1,663 @@
+---
+title: Projects
+description: Organizing and managing Solace Agent Mesh projects
+---
+
+A Solace Agent Mesh project is the organizational structure that contains all the components, configurations, and resources needed to run your multi-agent AI system. Understanding project organization is essential for maintainability, scalability, and team collaboration.
+
+## What is a Project?
+
+A Solace Agent Mesh project is a directory structure containing:
+
+- **Configuration files** - YAML files defining agents, gateways, and services
+- **Custom code** - Python tools, extensions, and integrations
+- **Environment setup** - Environment variables and dependencies
+- **Shared resources** - Common configurations and utilities
+
+<Info>
+Projects are created with `sam init` and managed with the SAM CLI.
+</Info>
+
+## Project Structure
+
+A typical project follows this organization:
+
+```
+my-sam-project/
+├── configs/                    # All configuration files
+│   ├── shared_config.yaml      # Shared settings (broker, models, services)
+│   ├── agents/                 # Agent configurations
+│   │   ├── orchestrator.yaml   # Main orchestrator agent
+│   │   ├── web_agent.yaml      # Web scraping agent
+│   │   ├── data_agent.yaml     # Data analysis agent
+│   │   └── custom_agent.yaml   # Domain-specific agents
+│   ├── gateways/               # Gateway configurations
+│   │   ├── rest_gateway.yaml   # REST API gateway
+│   │   ├── webui_gateway.yaml  # Web UI gateway
+│   │   └── slack_gateway.yaml  # Slack integration
+│   └── services/               # Platform services
+│       └── platform.yaml       # Platform service config
+├── src/                        # Custom Python code
+│   ├── __init__.py
+│   ├── custom_tools/           # Custom agent tools
+│   │   ├── __init__.py
+│   │   ├── database_tools.py
+│   │   └── api_integrations.py
+│   └── custom_gateways/        # Custom gateway implementations
+│       └── custom_interface.py
+├── data/                       # Data files and artifacts
+│   ├── embeddings/
+│   └── documents/
+├── .env                        # Environment variables
+├── .env.example                # Environment template
+├── requirements.txt            # Python dependencies
+├── README.md                   # Project documentation
+└── .gitignore                  # Git ignore rules
+```
+
+## Shared Configuration
+
+The `shared_config.yaml` file centralizes common settings used across all components:
+
+```yaml
+shared_config:
+  # Broker connection settings
+  - broker_connection: &broker_connection
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  # LLM model configurations
+  - models:
+    planning: &planning_model
+      model: ${LLM_SERVICE_PLANNING_MODEL_NAME}
+      api_base: ${LLM_SERVICE_ENDPOINT}
+      api_key: ${LLM_SERVICE_API_KEY}
+      temperature: 0.1
+      max_tokens: 16000
+      parallel_tool_calls: true
+
+    general: &general_model
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME}
+      api_base: ${LLM_SERVICE_ENDPOINT}
+      api_key: ${LLM_SERVICE_API_KEY}
+
+    image_gen: &image_generation_model
+      model: ${IMAGE_MODEL_NAME}
+      api_base: ${IMAGE_SERVICE_ENDPOINT}
+      api_key: ${IMAGE_SERVICE_API_KEY}
+
+  # Service configurations
+  - services:
+    session_service: &default_session_service
+      type: "sql"
+      default_behavior: "PERSISTENT"
+      database_url: ${SESSION_DATABASE_URL, sqlite:///session.db}
+    
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace
+```
+
+### Using Shared Configuration
+
+Reference shared settings in component configs:
+
+```yaml
+# In any agent/gateway config file
+!include ../shared_config.yaml
+
+apps:
+  - name: my_agent_app
+    broker:
+      <<: *broker_connection    # Use shared broker settings
+    
+    app_config:
+      model: *planning_model     # Use shared model config
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+```
+
+## Environment Variables
+
+Projects use environment variables for sensitive data and deployment-specific settings:
+
+### .env File
+
+```bash
+# Namespace
+NAMESPACE=myorg/production
+
+# Solace Broker
+SOLACE_BROKER_URL=tcps://broker.example.com:55443
+SOLACE_BROKER_USERNAME=sam-app
+SOLACE_BROKER_PASSWORD=secure-password
+SOLACE_BROKER_VPN=production
+
+# LLM Service
+LLM_SERVICE_ENDPOINT=https://api.openai.com/v1
+LLM_SERVICE_API_KEY=sk-...
+LLM_SERVICE_PLANNING_MODEL_NAME=gpt-4
+LLM_SERVICE_GENERAL_MODEL_NAME=gpt-3.5-turbo
+
+# Image Generation
+IMAGE_SERVICE_ENDPOINT=https://api.openai.com/v1
+IMAGE_SERVICE_API_KEY=sk-...
+IMAGE_MODEL_NAME=dall-e-3
+
+# Database
+SESSION_DATABASE_URL=postgresql://user:pass@localhost:5432/sessions
+PLATFORM_DATABASE_URL=postgresql://user:pass@localhost:5432/platform
+
+# Platform Service
+PLATFORM_HOST=0.0.0.0
+PLATFORM_PORT=8001
+EXTERNAL_AUTH_SERVICE_URL=https://auth.example.com
+
+# Custom Tool Configurations
+WEATHER_API_KEY=your-weather-api-key
+DATABASE_CONNECTION_STRING=postgresql://...
+```
+
+### .env.example Template
+
+Provide a template for team members:
+
+```bash
+# Copy this file to .env and fill in the values
+
+# Namespace
+NAMESPACE=myorg/dev
+
+# Solace Broker
+SOLACE_BROKER_URL=ws://localhost:8008
+SOLACE_BROKER_USERNAME=default
+SOLACE_BROKER_PASSWORD=default
+SOLACE_BROKER_VPN=default
+
+# LLM Service
+LLM_SERVICE_ENDPOINT=
+LLM_SERVICE_API_KEY=
+LLM_SERVICE_PLANNING_MODEL_NAME=gpt-4
+LLM_SERVICE_GENERAL_MODEL_NAME=gpt-3.5-turbo
+
+# Add your API keys and configuration
+```
+
+<Warning>
+Never commit `.env` files to version control. Always add to `.gitignore`.
+</Warning>
+
+## Creating a Project
+
+### Interactive Initialization
+
+Use the GUI-based initialization:
+
+```bash
+mkdir my-sam-project && cd my-sam-project
+python3 -m venv .venv && source .venv/bin/activate
+pip install solace-agent-mesh
+sam init --gui
+```
+
+The GUI prompts for:
+- Namespace configuration
+- Broker connection details
+- LLM provider selection
+- Component choices (orchestrator, gateways, etc.)
+- Database configuration
+
+### Command-Line Initialization
+
+```bash
+# Create project directory
+mkdir my-sam-project && cd my-sam-project
+
+# Set up Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install SAM
+pip install solace-agent-mesh
+
+# Initialize project
+sam init
+
+# Follow prompts or provide config file
+```
+
+## Project Organization Patterns
+
+### By Environment
+
+Organize configurations by deployment environment:
+
+```
+configs/
+├── shared_config.yaml
+├── dev/
+│   ├── agents/
+│   ├── gateways/
+│   └── .env.dev
+├── staging/
+│   ├── agents/
+│   ├── gateways/
+│   └── .env.staging
+└── production/
+    ├── agents/
+    ├── gateways/
+    └── .env.production
+```
+
+Run with environment-specific configs:
+
+```bash
+sam run configs/production/agents/orchestrator.yaml
+```
+
+### By Domain
+
+Organize by business domain or functionality:
+
+```
+configs/
+├── shared_config.yaml
+├── customer-service/
+│   ├── agents/
+│   │   ├── support_agent.yaml
+│   │   └── ticket_agent.yaml
+│   └── gateways/
+│       └── slack_support.yaml
+├── data-analytics/
+│   ├── agents/
+│   │   ├── sql_agent.yaml
+│   │   └── viz_agent.yaml
+│   └── gateways/
+│       └── analytics_api.yaml
+└── content-generation/
+    ├── agents/
+    │   ├── writer_agent.yaml
+    │   └── image_agent.yaml
+    └── gateways/
+        └── cms_integration.yaml
+```
+
+### Monorepo Structure
+
+Manage multiple related projects:
+
+```
+company-ai-platform/
+├── shared/
+│   ├── configs/
+│   │   └── shared_config.yaml
+│   └── tools/
+│       └── common_tools.py
+├── projects/
+│   ├── customer-service/
+│   │   ├── configs/
+│   │   ├── src/
+│   │   └── .env
+│   ├── analytics/
+│   │   ├── configs/
+│   │   ├── src/
+│   │   └── .env
+│   └── marketing/
+│       ├── configs/
+│       ├── src/
+│       └── .env
+└── infrastructure/
+    ├── kubernetes/
+    └── terraform/
+```
+
+## Running Projects
+
+### Single Component
+
+```bash
+sam run configs/agents/orchestrator.yaml
+```
+
+### Multiple Components
+
+```bash
+# Run specific configs
+sam run configs/agents/orchestrator.yaml \
+       configs/gateways/rest_gateway.yaml
+
+# Run all agents
+sam run configs/agents/
+
+# Run entire project
+sam run configs/
+```
+
+### Development Mode
+
+```bash
+# Auto-reload on file changes
+sam run --reload configs/agents/my_agent.yaml
+
+# Verbose logging
+sam run --log-level DEBUG configs/agents/my_agent.yaml
+```
+
+### Production Deployment
+
+```bash
+# Use process manager (systemd, supervisor, etc.)
+systemctl start sam-orchestrator
+systemctl start sam-gateways
+
+# Or containerized deployment
+docker-compose up -d
+
+# Or Kubernetes
+kubectl apply -f k8s/
+```
+
+## Dependency Management
+
+### requirements.txt
+
+```txt
+# Core framework
+solace-agent-mesh~=1.0.0
+
+# Official plugins
+sam-rest-gateway @ git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-rest-gateway
+sam-slack-gateway @ git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-slack-gateway
+
+# Custom tools dependencies
+requests>=2.31.0
+pandas>=2.0.0
+sqlalchemy>=2.0.0
+
+# Development tools
+pytest>=7.0.0
+black>=23.0.0
+ruff>=0.1.0
+```
+
+### Using uv (recommended)
+
+```bash
+# Install dependencies with uv (faster)
+uv pip install -r requirements.txt
+
+# Or use uv's lock file
+uv pip sync
+```
+
+## Version Control
+
+### .gitignore
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SAM artifacts
+/data/artifacts/
+/tmp/
+```
+
+### Git Workflow
+
+```bash
+# Initialize repository
+git init
+git add .
+git commit -m "Initial project setup"
+
+# Create .env from template
+cp .env.example .env
+# Edit .env with actual values (not committed)
+
+# Create feature branch
+git checkout -b feature/new-agent
+
+# Commit configuration changes
+git add configs/agents/new_agent.yaml
+git commit -m "Add new specialized agent"
+
+# Push changes
+git push origin feature/new-agent
+```
+
+## Testing Projects
+
+### Unit Tests
+
+```python
+# tests/test_custom_tools.py
+import pytest
+from src.custom_tools.database_tools import query_database
+
+def test_query_database():
+    result = query_database("SELECT 1")
+    assert result is not None
+```
+
+### Integration Tests
+
+```python
+# tests/test_agent_integration.py
+import pytest
+from solace_agent_mesh.agent.testing import AgentTestHarness
+
+def test_orchestrator_agent():
+    harness = AgentTestHarness("configs/agents/orchestrator.yaml")
+    response = harness.send_message("Hello, orchestrator!")
+    assert response.status == "success"
+```
+
+### Run Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_custom_tools.py
+
+# Run with coverage
+pytest --cov=src tests/
+```
+
+## Project Templates
+
+### Customer Service Template
+
+<Accordion title="View Template">
+```yaml
+# configs/shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+
+  - models:
+    support: &support_model
+      model: gpt-4
+      api_base: ${LLM_SERVICE_ENDPOINT}
+      api_key: ${LLM_SERVICE_API_KEY}
+      temperature: 0.7
+
+  - services:
+    ticket_db: &ticket_database
+      type: sql
+      database_url: ${TICKET_DB_URL}
+```
+
+Agents:
+- Orchestrator: Routes customer inquiries
+- Support Agent: Handles common questions
+- Ticket Agent: Creates/updates support tickets
+- Knowledge Base Agent: Searches documentation
+
+Gateways:
+- Slack Gateway: Team communication
+- REST Gateway: API access
+- WebUI Gateway: Customer portal
+</Accordion>
+
+### Data Analytics Template
+
+<Accordion title="View Template">
+Agents:
+- Orchestrator: Coordinates analysis workflows
+- SQL Agent: Queries databases
+- Visualization Agent: Creates charts/graphs
+- Report Agent: Generates formatted reports
+
+Gateways:
+- REST Gateway: API for analytics requests
+- Event Mesh Gateway: Real-time data feeds
+
+Tools:
+- Custom SQL connectors
+- Plotly/Matplotlib integration
+- PDF report generation
+</Accordion>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Configuration Management">
+    - Keep shared settings in `shared_config.yaml`
+    - Use environment variables for secrets
+    - Document all configuration options
+    - Version control all config files
+    - Use `.env.example` as template
+  </Accordion>
+  
+  <Accordion title="Project Organization">
+    - Separate configs by type (agents, gateways, services)
+    - Keep custom code in `src/`
+    - Use meaningful component names
+    - Document project structure in README
+    - Maintain consistent naming conventions
+  </Accordion>
+  
+  <Accordion title="Development Workflow">
+    - Use virtual environments
+    - Pin dependency versions
+    - Write tests for custom tools
+    - Use feature branches
+    - Review configuration changes
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Never commit `.env` files
+    - Use secrets management in production
+    - Rotate API keys regularly
+    - Restrict broker credentials
+    - Enable authentication for gateways
+  </Accordion>
+  
+  <Accordion title="Team Collaboration">
+    - Share `.env.example` template
+    - Document setup procedures
+    - Use consistent namespaces per environment
+    - Communicate configuration changes
+    - Maintain project documentation
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Import errors for custom tools">
+    Check:
+    - `src/__init__.py` exists
+    - Python path includes project root
+    - Module names match directory structure
+    
+    Set PYTHONPATH:
+    ```bash
+    export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+    ```
+  </Accordion>
+  
+  <Accordion title="Environment variables not loading">
+    Check:
+    - `.env` file exists in project root
+    - Variables are exported: `export $(cat .env | xargs)`
+    - No syntax errors in `.env`
+    - Correct variable names in configs
+  </Accordion>
+  
+  <Accordion title="Configuration not found">
+    Check:
+    - File paths are correct
+    - `!include` paths are relative to config file
+    - Working directory is project root
+    - File permissions allow reading
+  </Accordion>
+  
+  <Accordion title="Multiple environments conflict">
+    Solution:
+    - Use separate namespaces per environment
+    - Different broker VPNs for isolation
+    - Separate database instances
+    - Environment-specific `.env` files
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Hosts" icon="robot" href="/components/agent-hosts">
+    Configure and deploy agents
+  </Card>
+  
+  <Card title="Gateways" icon="plug" href="/components/gateways">
+    Set up external interfaces
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="/deploying/kubernetes">
+    Deploy to production environments
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/developing/best-practices">
+    Learn development patterns
+  </Card>
+</CardGroup>

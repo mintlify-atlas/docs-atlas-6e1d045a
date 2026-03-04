@@ -1,0 +1,343 @@
+---
+title: 'sam add'
+description: 'Create templates for agents, gateways, or proxies'
+---
+
+## Overview
+
+The `sam add` command creates configuration templates for new agents, gateways, or proxies in your Solace Agent Mesh project.
+
+## Syntax
+
+```bash
+sam add <COMPONENT_TYPE> <NAME> [OPTIONS]
+```
+
+## Description
+
+Creates new component configurations based on templates. The command supports three component types:
+
+- **agent**: Create a new AI agent configuration
+- **gateway**: Create a new gateway component with skeleton code
+- **proxy**: Create a new agent-to-agent (A2A) proxy configuration
+
+Each component type generates appropriate configuration files and source code scaffolding.
+
+## Subcommands
+
+### sam add agent
+
+Creates a new agent configuration via CLI or Web UI.
+
+#### Syntax
+
+```bash
+sam add agent [NAME] [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="NAME" type="string" required>
+  Name of the agent component to create (e.g., `my-new-agent`). Required unless using `--gui`.
+</ParamField>
+
+#### Options
+
+<ParamField path="--gui" type="boolean" default="false">
+  Launch the web UI to configure the agent interactively.
+</ParamField>
+
+<ParamField path="--skip" type="boolean" default="false">
+  Skip interactive prompts and use defaults (CLI mode only).
+</ParamField>
+
+<ParamField path="--namespace" type="string">
+  Namespace for the agent (e.g., `myorg/dev`). Defaults to `${NAMESPACE}`.
+</ParamField>
+
+<ParamField path="--supports-streaming" type="boolean">
+  Enable streaming support for the agent.
+</ParamField>
+
+<ParamField path="--model-type" type="choice">
+  Model type for the agent. Options: `planning`, `general`, `image_gen`, `report_gen`, `multimodal`, `gemini_pro`
+</ParamField>
+
+<ParamField path="--instruction" type="string">
+  Custom instruction for the agent.
+</ParamField>
+
+<ParamField path="--session-service-type" type="choice">
+  Session service type. Options: `sql`, `memory`, `vertex_rag`
+</ParamField>
+
+<ParamField path="--session-service-behavior" type="choice">
+  Session service behavior. Options: `PERSISTENT`, `RUN_BASED`
+</ParamField>
+
+<ParamField path="--database-url" type="string">
+  Database URL for session service (if type is `sql`).
+</ParamField>
+
+<ParamField path="--artifact-service-type" type="choice">
+  Artifact service type. Options: `memory`, `filesystem`, `gcs`, `s3`
+</ParamField>
+
+<ParamField path="--artifact-service-base-path" type="string">
+  Base path for filesystem artifact service.
+</ParamField>
+
+<ParamField path="--artifact-service-bucket-name" type="string">
+  S3 bucket name (for s3 artifact service type).
+</ParamField>
+
+<ParamField path="--artifact-service-endpoint-url" type="string">
+  S3 endpoint URL (for s3 artifact service type, optional for AWS S3).
+</ParamField>
+
+<ParamField path="--artifact-service-region" type="string">
+  S3 region (for s3 artifact service type).
+</ParamField>
+
+<ParamField path="--artifact-service-scope" type="choice">
+  Artifact service scope. Options: `namespace`, `app`, `custom`
+</ParamField>
+
+<ParamField path="--artifact-handling-mode" type="choice">
+  Artifact handling mode. Options: `ignore`, `embed`, `reference`
+</ParamField>
+
+<ParamField path="--enable-embed-resolution" type="boolean">
+  Enable embed resolution for artifacts.
+</ParamField>
+
+<ParamField path="--enable-artifact-content-instruction" type="boolean">
+  Enable artifact content instruction.
+</ParamField>
+
+<ParamField path="--enable-builtin-artifact-tools" type="boolean">
+  Enable built-in artifact tools.
+</ParamField>
+
+<ParamField path="--enable-builtin-data-tools" type="boolean">
+  Enable built-in data tools.
+</ParamField>
+
+<ParamField path="--agent-card-description" type="string">
+  Description for the agent card.
+</ParamField>
+
+<ParamField path="--agent-card-default-input-modes-str" type="string">
+  Comma-separated default input modes for agent card.
+</ParamField>
+
+<ParamField path="--agent-card-default-output-modes-str" type="string">
+  Comma-separated default output modes for agent card.
+</ParamField>
+
+<ParamField path="--agent-card-publishing-interval" type="integer">
+  Agent card publishing interval in seconds.
+</ParamField>
+
+<ParamField path="--agent-discovery-enabled" type="boolean">
+  Enable agent discovery.
+</ParamField>
+
+<ParamField path="--inter-agent-communication-allow-list-str" type="string">
+  Comma-separated allow list for inter-agent communication.
+</ParamField>
+
+<ParamField path="--inter-agent-communication-deny-list-str" type="string">
+  Comma-separated deny list for inter-agent communication.
+</ParamField>
+
+<ParamField path="--inter-agent-communication-timeout" type="integer">
+  Timeout in seconds for inter-agent communication.
+</ParamField>
+
+#### Examples
+
+**Interactive agent creation:**
+
+```bash
+sam add agent my-analytics-agent
+```
+
+**Using GUI:**
+
+```bash
+sam add agent --gui
+```
+
+**Non-interactive with custom settings:**
+
+```bash
+sam add agent data-processor \
+  --skip \
+  --namespace mycompany/prod \
+  --model-type planning \
+  --supports-streaming \
+  --artifact-service-type s3 \
+  --artifact-service-bucket-name my-artifacts
+```
+
+#### Output
+
+Creates `configs/agents/{agent_name}_agent.yaml` and potentially updates `.env` with database URL.
+
+```
+Agent configuration created: configs/agents/my_analytics_agent_agent.yaml
+```
+
+---
+
+### sam add gateway
+
+Creates a new gateway skeleton structure via CLI or Web UI.
+
+#### Syntax
+
+```bash
+sam add gateway [NAME] [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="NAME" type="string" required>
+  Name of the gateway component to create (e.g., `my-new-gateway`). Required unless using `--gui`.
+</ParamField>
+
+#### Options
+
+<ParamField path="--gui" type="boolean" default="false">
+  Launch the web UI to configure the gateway.
+</ParamField>
+
+<ParamField path="--skip" type="boolean" default="false">
+  Skip interactive prompts and use defaults (CLI mode only).
+</ParamField>
+
+<ParamField path="--namespace" type="string">
+  Namespace for the gateway (e.g., `myorg/dev`).
+</ParamField>
+
+<ParamField path="--gateway-id" type="string">
+  Custom Gateway ID for the gateway.
+</ParamField>
+
+<ParamField path="--artifact-service-type" type="choice">
+  Artifact service type. Options: `use_default_shared_artifact_service`, `memory`, `filesystem`, `gcs`
+</ParamField>
+
+<ParamField path="--artifact-service-base-path" type="string">
+  Base path for filesystem artifact service (if type is `filesystem`).
+</ParamField>
+
+<ParamField path="--artifact-service-scope" type="choice">
+  Artifact service scope. Options: `namespace`, `app`, `custom`
+</ParamField>
+
+<ParamField path="--system-purpose" type="string">
+  System purpose for the gateway (can be multi-line).
+</ParamField>
+
+<ParamField path="--response-format" type="string">
+  Response format for the gateway (can be multi-line).
+</ParamField>
+
+#### Examples
+
+**Interactive gateway creation:**
+
+```bash
+sam add gateway api-gateway
+```
+
+**Non-interactive:**
+
+```bash
+sam add gateway custom-gateway \
+  --skip \
+  --namespace myorg/prod \
+  --gateway-id custom-gw-001 \
+  --artifact-service-type filesystem
+```
+
+#### Output
+
+Creates multiple files:
+
+```
+Gateway 'api_gateway' skeleton created successfully.
+Generated files:
+  - configs/gateways/api_gateway_config.yaml
+  - src/api_gateway/app.py
+  - src/api_gateway/component.py
+  - src/api_gateway/__init__.py
+
+Next steps:
+1. Review and customize the specific parameters in 'configs/gateways/api_gateway_config.yaml'.
+2. Define your gateway's specific schema in 'src/api_gateway/component.py'.
+3. Implement the core logic in 'src/api_gateway/component.py'.
+```
+
+---
+
+### sam add proxy
+
+Creates a new agent-to-agent (A2A) proxy configuration.
+
+#### Syntax
+
+```bash
+sam add proxy <NAME> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="NAME" type="string" required>
+  Name of the proxy component to create (e.g., `my-proxy`).
+</ParamField>
+
+#### Options
+
+<ParamField path="--skip" type="boolean" default="false">
+  Skip interactive prompts (creates proxy with default template).
+</ParamField>
+
+#### Examples
+
+**Create proxy:**
+
+```bash
+sam add proxy api-proxy
+```
+
+**Non-interactive:**
+
+```bash
+sam add proxy api-proxy --skip
+```
+
+#### Output
+
+Creates `configs/agents/{proxy_name}_proxy.yaml`.
+
+```
+Proxy configuration created: configs/agents/api_proxy_proxy.yaml
+```
+
+---
+
+## Implementation Details
+
+Implemented in:
+- Agent: `/home/daytona/workspace/source/cli/commands/add_cmd/agent_cmd.py`
+- Gateway: `/home/daytona/workspace/source/cli/commands/add_cmd/gateway_cmd.py`
+- Proxy: `/home/daytona/workspace/source/cli/commands/add_cmd/proxy_cmd.py`
+
+## See Also
+
+- [sam init](/api/cli/init) - Initialize a new project
+- [sam plugin add](/api/cli/plugin) - Add components from plugins
+- [sam run](/api/cli/run) - Run your application

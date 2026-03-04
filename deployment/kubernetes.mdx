@@ -1,0 +1,752 @@
+---
+title: Kubernetes Deployment
+description: Deploy Solace Agent Mesh on Kubernetes with Helm charts
+---
+
+# Kubernetes Deployment
+
+Kubernetes excels at managing containerized applications at scale, providing features like automatic scaling, rolling updates, and self-healing capabilities. When your Agent Mesh deployment needs to handle varying loads or requires high availability, Kubernetes becomes the preferred orchestration platform.
+
+## Prerequisites
+
+Before deploying to Kubernetes, ensure you have:
+
+**Cluster Requirements:**
+- Kubernetes cluster version 1.20 or later
+- kubectl command-line tool configured
+- Helm 3.0 or later installed
+- Standard worker nodes (VMs or bare metal)
+  - **Not supported:** Serverless nodes (AWS Fargate, GKE Autopilot, Azure Virtual Nodes)
+
+**External Services:**
+- PostgreSQL 17+ database (managed service recommended)
+- S3-compatible object storage
+- Solace event broker (Cloud or self-hosted)
+- LLM provider endpoints
+- Container registry credentials
+
+**Minimum Compute (per node):**
+- 2 vCPU / 8 GB RAM (minimum)
+- 4 vCPU / 16 GB RAM (recommended)
+- SSD-backed storage class
+
+## Supported Kubernetes Distributions
+
+### Validated Platforms (Tier 1 Support)
+
+Solace explicitly validates Agent Mesh releases against:
+
+- **AWS EKS** - Amazon Elastic Kubernetes Service
+- **Azure AKS** - Azure Kubernetes Service  
+- **Google GKE** - Google Kubernetes Engine
+
+### Compatible Platforms (Tier 2 Support)
+
+Agent Mesh is compatible with standard Kubernetes APIs:
+
+- Red Hat OpenShift
+- VMware Tanzu (TKG)
+- SUSE Rancher (RKE2)
+- Oracle Container Engine (OKE)
+- Canonical Charmed Kubernetes
+- Upstream Kubernetes (kubeadm)
+
+<Note>
+  For distributions with proprietary security constraints (e.g., OpenShift SCCs, Tanzu PSPs), Solace support is limited to API compatibility confirmation. Customer-specific security policies remain the customer's responsibility.
+</Note>
+
+## Helm Chart Quickstart
+
+The Solace Agent Mesh Helm quickstart provides pre-configured charts, deployment examples, and detailed documentation for common scenarios.
+
+### Installation
+
+**1. Clone the Helm quickstart repository:**
+
+```bash
+git clone https://github.com/SolaceProducts/solace-agent-mesh-helm-quickstart.git
+cd solace-agent-mesh-helm-quickstart
+```
+
+**2. Review the documentation:**
+
+For step-by-step deployment instructions, see the [Helm Deployment Guide](https://solaceproducts.github.io/solace-agent-mesh-helm-quickstart/docs-site/).
+
+**3. Configure your deployment:**
+
+Create a `values.yaml` file with your environment-specific settings:
+
+```yaml
+# Global settings
+global:
+  imageRegistry: gcr.io/gcp-maas-prod
+  imagePullSecrets:
+    - name: gcr-pull-secret
+  namespace: solace-agent-mesh
+
+# Solace Event Broker Connection
+broker:
+  url: wss://your-broker.messaging.solace.cloud:443
+  username: your-username
+  password: your-password
+  vpn: your-vpn
+  useTemporaryQueues: false
+
+# LLM Configuration
+llm:
+  endpoint: https://api.openai.com/v1
+  apiKey: sk-...
+  planningModel: openai/gpt-4
+  generalModel: openai/gpt-4
+
+# Session Storage (PostgreSQL)
+sessionStorage:
+  type: sql
+  databaseUrl: postgresql://user:password@your-rds.amazonaws.com:5432/sam
+
+# Artifact Storage (S3)
+artifactStorage:
+  type: s3
+  bucket: your-bucket-name
+  region: us-east-1
+  accessKeyId: AKIA...
+  secretAccessKey: your-secret-key
+
+# Security
+security:
+  sessionSecretKey: your-random-secret-key
+
+# Resource configuration
+resources:
+  agentMesh:
+    requests:
+      cpu: 175m
+      memory: 625Mi
+    limits:
+      cpu: 200m
+      memory: 1Gi
+  deployer:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 100m
+      memory: 100Mi
+
+# Health checks
+healthCheck:
+  enabled: true
+  port: 8080
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: agent-mesh.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: agent-mesh-tls
+      hosts:
+        - agent-mesh.example.com
+```
+
+**4. Create Kubernetes secrets:**
+
+```bash
+# Pull secret for container registry
+kubectl create secret docker-registry gcr-pull-secret \
+  --docker-server=gcr.io \
+  --docker-username=_json_key \
+  --docker-password="$(cat /path/to/key.json)" \
+  -n solace-agent-mesh
+
+# Secrets for sensitive configuration
+kubectl create secret generic sam-secrets \
+  --from-literal=broker-password=your-password \
+  --from-literal=llm-api-key=sk-... \
+  --from-literal=session-secret-key=your-secret \
+  --from-literal=db-password=db-password \
+  --from-literal=aws-access-key=AKIA... \
+  --from-literal=aws-secret-key=your-secret \
+  -n solace-agent-mesh
+```
+
+**5. Install the Helm chart:**
+
+```bash
+helm install solace-agent-mesh ./charts/solace-agent-mesh \
+  -f values.yaml \
+  -n solace-agent-mesh \
+  --create-namespace
+```
+
+**6. Verify the deployment:**
+
+```bash
+# Check pod status
+kubectl get pods -n solace-agent-mesh
+
+# Check service endpoints
+kubectl get svc -n solace-agent-mesh
+
+# View logs
+kubectl logs -f deployment/solace-agent-mesh -n solace-agent-mesh
+```
+
+## Deployment Architecture
+
+### Monolithic Deployment
+
+Deploy all components in a single deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: solace-agent-mesh
+  namespace: solace-agent-mesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: solace-agent-mesh
+  template:
+    metadata:
+      labels:
+        app: solace-agent-mesh
+    spec:
+      containers:
+        - name: agent-mesh
+          image: solace/solace-agent-mesh:latest
+          args: ["run", "--system-env"]
+          ports:
+            - containerPort: 5002
+              name: web-ui
+            - containerPort: 8000
+              name: api
+            - containerPort: 8080
+              name: health
+          envFrom:
+            - secretRef:
+                name: sam-secrets
+            - configMapRef:
+                name: sam-config
+          resources:
+            requests:
+              cpu: 175m
+              memory: 625Mi
+            limits:
+              cpu: 200m
+              memory: 1Gi
+```
+
+### Microservices Deployment
+
+Deploy components as separate deployments for independent scaling:
+
+**Core Platform:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sam-core
+  namespace: solace-agent-mesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sam-core
+      component: core
+  template:
+    metadata:
+      labels:
+        app: sam-core
+        component: core
+    spec:
+      containers:
+        - name: core
+          image: solace/solace-agent-mesh:latest
+          args: ["run", "--system-env", "/app/configs/core.yaml"]
+          # ... ports, env, resources ...
+```
+
+**Specialized Agent:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sam-database-agent
+  namespace: solace-agent-mesh
+spec:
+  replicas: 3  # Scale independently
+  selector:
+    matchLabels:
+      app: sam-agent
+      component: database-agent
+  template:
+    metadata:
+      labels:
+        app: sam-agent
+        component: database-agent
+    spec:
+      containers:
+        - name: agent
+          image: solace/solace-agent-mesh:latest
+          args: ["run", "--system-env", "/app/configs/agents/database_agent.yaml"]
+          resources:
+            requests:
+              cpu: 175m
+              memory: 625Mi
+            limits:
+              cpu: 200m
+              memory: 768Mi
+```
+
+## Configuration Management
+
+### ConfigMap for Non-Sensitive Data
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam-config
+  namespace: solace-agent-mesh
+data:
+  SOLACE_BROKER_URL: "wss://your-broker.messaging.solace.cloud:443"
+  SOLACE_BROKER_USERNAME: "your-username"
+  SOLACE_BROKER_VPN: "your-vpn"
+  USE_TEMPORARY_QUEUES: "false"
+  LLM_SERVICE_ENDPOINT: "https://api.openai.com/v1"
+  LLM_SERVICE_PLANNING_MODEL_NAME: "openai/gpt-4"
+  LLM_SERVICE_GENERAL_MODEL_NAME: "openai/gpt-4"
+  CONFIG_PORTAL_HOST: "0.0.0.0"
+  FASTAPI_HOST: "0.0.0.0"
+  FASTAPI_PORT: "8000"
+  ARTIFACT_STORAGE_TYPE: "s3"
+  ARTIFACT_STORAGE_S3_BUCKET: "your-bucket"
+  ARTIFACT_STORAGE_S3_REGION: "us-east-1"
+```
+
+### Secrets for Sensitive Data
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sam-secrets
+  namespace: solace-agent-mesh
+type: Opaque
+stringData:
+  SOLACE_BROKER_PASSWORD: "your-password"
+  LLM_SERVICE_API_KEY: "sk-..."
+  SESSION_SECRET_KEY: "your-random-secret-key"
+  DATABASE_URL: "postgresql://user:password@host:5432/sam"
+  AWS_ACCESS_KEY_ID: "AKIA..."
+  AWS_SECRET_ACCESS_KEY: "your-secret-key"
+```
+
+<Warning>
+  Never commit secrets directly in YAML files. Use sealed secrets, external secret operators, or create secrets via kubectl.
+</Warning>
+
+## Health Checks and Probes
+
+Configure Kubernetes probes for automated lifecycle management:
+
+```yaml
+containers:
+  - name: agent-mesh
+    # ... other config ...
+    ports:
+      - containerPort: 8080
+        name: health
+    
+    # Startup probe - prevents liveness from killing slow-starting containers
+    startupProbe:
+      httpGet:
+        path: /startup
+        port: health
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 30  # 150 seconds total (30 * 5s)
+    
+    # Readiness probe - removes pod from service when unhealthy
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: health
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    
+    # Liveness probe - restarts container when unhealthy
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: health
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+```
+
+## Storage Configuration
+
+### Persistent Volumes for Shared Storage
+
+If using file-based artifact storage (not recommended for production):
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sam-artifacts
+  namespace: solace-agent-mesh
+spec:
+  accessModes:
+    - ReadWriteMany  # Required for multiple pods
+  storageClassName: efs-sc  # AWS EFS, Azure Files, or similar
+  resources:
+    requests:
+      storage: 50Gi
+```
+
+### Using External Storage (Recommended)
+
+For production, use managed services:
+
+**PostgreSQL:**
+- AWS RDS for PostgreSQL
+- Azure Database for PostgreSQL
+- Google Cloud SQL for PostgreSQL
+
+**Object Storage:**
+- AWS S3
+- Azure Blob Storage
+- Google Cloud Storage
+- MinIO (self-hosted)
+
+## Queue Configuration
+
+For Kubernetes environments with container restarts, configure durable queues:
+
+```yaml
+envFrom:
+  - configMapRef:
+      name: sam-config
+env:
+  - name: USE_TEMPORARY_QUEUES
+    value: "false"
+```
+
+**Create a Queue Template in Solace Cloud:**
+
+1. Navigate to **Message VPNs** → select your VPN
+2. Go to **Queues** → **Templates** tab
+3. Click **+ Queue Template**
+4. Configure:
+   - **Queue Name Filter**: `sam/>` (or your namespace)
+   - **Respect TTL**: `true`
+   - **Maximum TTL (sec)**: `18000`
+
+This prevents message accumulation when agents restart.
+
+## Resource Management
+
+### Resource Requests and Limits
+
+**Core Components:**
+
+```yaml
+resources:
+  agentMesh:
+    requests:
+      cpu: 175m
+      memory: 625Mi
+    limits:
+      cpu: 200m
+      memory: 1Gi
+  
+  deployer:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 100m
+      memory: 100Mi
+  
+  agent:
+    requests:
+      cpu: 175m
+      memory: 625Mi
+    limits:
+      cpu: 200m
+      memory: 768Mi
+```
+
+### Horizontal Pod Autoscaling
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sam-agent-hpa
+  namespace: solace-agent-mesh
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sam-database-agent
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+```
+
+## Network Configuration
+
+### Service Definition
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: solace-agent-mesh
+  namespace: solace-agent-mesh
+spec:
+  type: ClusterIP
+  selector:
+    app: solace-agent-mesh
+  ports:
+    - name: web-ui
+      port: 5002
+      targetPort: 5002
+    - name: api
+      port: 8000
+      targetPort: 8000
+```
+
+### Ingress Configuration
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: solace-agent-mesh
+  namespace: solace-agent-mesh
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - agent-mesh.example.com
+      secretName: agent-mesh-tls
+  rules:
+    - host: agent-mesh.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: solace-agent-mesh
+                port:
+                  number: 5002
+```
+
+## Security Considerations
+
+### Pod Security
+
+```yaml
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: agent-mesh
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # Agent Mesh needs write access
+```
+
+### Network Policies
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sam-network-policy
+  namespace: solace-agent-mesh
+spec:
+  podSelector:
+    matchLabels:
+      app: solace-agent-mesh
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: 5002
+        - port: 8000
+  egress:
+    - to:  # Allow DNS
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+    - to:  # Allow Solace broker
+        - podSelector: {}
+      ports:
+        - port: 443
+        - port: 55443
+    - to:  # Allow LLM providers
+        - podSelector: {}
+      ports:
+        - port: 443
+```
+
+## Monitoring and Observability
+
+### ServiceMonitor for Prometheus
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: solace-agent-mesh
+  namespace: solace-agent-mesh
+spec:
+  selector:
+    matchLabels:
+      app: solace-agent-mesh
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+```
+
+### Logging with FluentBit
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+data:
+  parsers.conf: |
+    [PARSER]
+        Name   sam-json
+        Format json
+        Time_Key timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+  
+  fluent-bit.conf: |
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*solace-agent-mesh*.log
+        Parser            sam-json
+        Tag               sam.*
+        Refresh_Interval  5
+```
+
+## Troubleshooting
+
+### Pod Won't Start
+
+```bash
+# Check pod status
+kubectl get pods -n solace-agent-mesh
+
+# Describe pod for events
+kubectl describe pod <pod-name> -n solace-agent-mesh
+
+# Check logs
+kubectl logs <pod-name> -n solace-agent-mesh
+
+# Check previous container logs (if restarted)
+kubectl logs <pod-name> -n solace-agent-mesh --previous
+```
+
+### Image Pull Errors
+
+```bash
+# Verify pull secret exists
+kubectl get secrets -n solace-agent-mesh
+
+# Check secret is referenced in service account
+kubectl get serviceaccount default -n solace-agent-mesh -o yaml
+```
+
+### Health Check Failures
+
+```bash
+# Check health endpoints directly
+kubectl port-forward pod/<pod-name> 8080:8080 -n solace-agent-mesh
+curl http://localhost:8080/healthz
+curl http://localhost:8080/readyz
+
+# Check probe configuration
+kubectl get pod <pod-name> -n solace-agent-mesh -o yaml | grep -A 10 livenessProbe
+```
+
+### Connection Issues
+
+```bash
+# Test from inside pod
+kubectl exec -it <pod-name> -n solace-agent-mesh -- /bin/bash
+curl -v https://your-broker.messaging.solace.cloud
+curl -v https://api.openai.com/v1/models
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Best Practices" icon="shield-check" href="/deployment/production-best-practices">
+    Security, monitoring, and operational best practices
+  </Card>
+  <Card title="Helm Quickstart Guide" icon="book" href="https://solaceproducts.github.io/solace-agent-mesh-helm-quickstart/docs-site/">
+    Detailed Helm chart documentation and examples
+  </Card>
+</CardGroup>
+
+## Related Documentation
+
+- [Deployment Overview](/deployment/overview) - Compare deployment options
+- [Health Checks](/deployment/production-best-practices#monitoring) - Configure health monitoring
+- [Logging](/deployment/production-best-practices#monitoring) - Application logging configuration
+- [Queue Configuration](/deployment/kubernetes#queue-configuration) - Durable queue setup

@@ -1,0 +1,370 @@
+---
+title: 'sam init'
+description: 'Initialize a new Solace Agent Mesh project'
+---
+
+## Overview
+
+The `sam init` command creates a new Solace Agent Mesh project with all necessary configuration files, directory structure, and default settings.
+
+## Syntax
+
+```bash
+sam init [OPTIONS]
+```
+
+## Description
+
+Initializes a new Solace application project by creating:
+- Project directory structure
+- Configuration files (YAML)
+- Environment file (`.env`)
+- Main orchestrator configuration
+- Web UI gateway configuration (optional)
+- Platform service configuration
+
+The command supports both interactive mode (with prompts) and non-interactive mode (using CLI flags or defaults).
+
+## Options
+
+### Initialization Mode
+
+<ParamField path="--skip" type="boolean" default="false">
+  Non-interactive mode. Skip all prompts and use default values where applicable.
+</ParamField>
+
+<ParamField path="--gui" type="boolean" default="false">
+  Launch the browser-based initialization interface for interactive configuration.
+</ParamField>
+
+<ParamField path="--dev-mode" type="boolean" default="false">
+  Shortcut to select dev mode for broker (equivalent to `--broker-type dev`).
+</ParamField>
+
+### LLM Service Configuration
+
+<ParamField path="--llm-service-endpoint" type="string">
+  LLM Service Endpoint URL.
+</ParamField>
+
+<ParamField path="--llm-service-api-key" type="string">
+  LLM Service API Key.
+</ParamField>
+
+<ParamField path="--llm-service-planning-model-name" type="string">
+  LLM Planning Model Name.
+</ParamField>
+
+<ParamField path="--llm-service-general-model-name" type="string">
+  LLM General Model Name.
+</ParamField>
+
+### Project Configuration
+
+<ParamField path="--namespace" type="string">
+  Namespace for the project (e.g., `myorg/dev`).
+</ParamField>
+
+### Broker Configuration
+
+<ParamField path="--broker-type" type="choice">
+  Broker type. Options:
+  - `1`, `solace`: Use existing Solace broker
+  - `2`, `container`: Create new local broker in container
+  - `3`, `dev`, `dev_mode`, `dev_broker`: Use dev mode (bypasses broker)
+</ParamField>
+
+<ParamField path="--broker-url" type="string">
+  Solace broker URL endpoint (e.g., `ws://localhost:8008`).
+</ParamField>
+
+<ParamField path="--broker-vpn" type="string">
+  Solace broker VPN name.
+</ParamField>
+
+<ParamField path="--broker-username" type="string">
+  Solace broker username.
+</ParamField>
+
+<ParamField path="--broker-password" type="string">
+  Solace broker password.
+</ParamField>
+
+<ParamField path="--container-engine" type="choice">
+  Container engine for local broker. Options: `docker`, `podman`
+</ParamField>
+
+### Agent Configuration
+
+<ParamField path="--agent-name" type="string">
+  Agent name for the main orchestrator.
+</ParamField>
+
+<ParamField path="--supports-streaming" type="boolean">
+  Enable streaming support for the agent.
+</ParamField>
+
+<ParamField path="--agent-card-description" type="string">
+  Agent card description.
+</ParamField>
+
+<ParamField path="--agent-card-default-input-modes" type="string">
+  Agent card default input modes (comma-separated).
+</ParamField>
+
+<ParamField path="--agent-card-default-output-modes" type="string">
+  Agent card default output modes (comma-separated).
+</ParamField>
+
+<ParamField path="--agent-discovery-enabled" type="boolean">
+  Enable agent discovery.
+</ParamField>
+
+<ParamField path="--agent-card-publishing-interval" type="integer">
+  Agent card publishing interval (seconds).
+</ParamField>
+
+### Session Service
+
+<ParamField path="--session-service-type" type="choice">
+  Session service type. Options: `memory`, `vertex_rag`, `sql`
+</ParamField>
+
+<ParamField path="--session-service-behavior" type="choice">
+  Session service behavior. Options: `PERSISTENT`, `RUN_BASED`
+</ParamField>
+
+<ParamField path="--orchestrator-database-url" type="string">
+  Database URL for the Orchestrator.
+</ParamField>
+
+### Artifact Service
+
+<ParamField path="--artifact-service-type" type="choice">
+  Artifact service type. Options: `memory`, `filesystem`, `gcs`, `s3`
+</ParamField>
+
+<ParamField path="--artifact-service-base-path" type="string">
+  Artifact service base path (for filesystem type).
+</ParamField>
+
+<ParamField path="--artifact-service-bucket-name" type="string">
+  S3 bucket name (for s3 artifact service type).
+</ParamField>
+
+<ParamField path="--artifact-service-endpoint-url" type="string">
+  S3 endpoint URL (for s3 artifact service type, optional for AWS S3).
+</ParamField>
+
+<ParamField path="--artifact-service-region" type="string">
+  S3 region (for s3 artifact service type).
+</ParamField>
+
+<ParamField path="--artifact-service-scope" type="choice">
+  Artifact service scope. Options: `namespace`, `app`, `custom`
+</ParamField>
+
+<ParamField path="--artifact-handling-mode" type="choice">
+  Artifact handling mode. Options: `ignore`, `embed`, `reference`
+</ParamField>
+
+<ParamField path="--enable-embed-resolution" type="boolean">
+  Enable embed resolution.
+</ParamField>
+
+<ParamField path="--enable-artifact-content-instruction" type="boolean">
+  Enable artifact content instruction.
+</ParamField>
+
+<ParamField path="--enable-builtin-artifact-tools" type="boolean">
+  Enable built-in artifact tools.
+</ParamField>
+
+<ParamField path="--enable-builtin-data-tools" type="boolean">
+  Enable built-in data tools.
+</ParamField>
+
+### Inter-Agent Communication
+
+<ParamField path="--inter-agent-communication-allow-list" type="string">
+  Inter-agent communication allow list (comma-separated, use `*` for all).
+</ParamField>
+
+<ParamField path="--inter-agent-communication-deny-list" type="string">
+  Inter-agent communication deny list (comma-separated).
+</ParamField>
+
+<ParamField path="--inter-agent-communication-timeout" type="integer">
+  Inter-agent communication timeout (seconds).
+</ParamField>
+
+### Web UI Gateway
+
+<ParamField path="--add-webui-gateway" type="boolean">
+  Add a default Web UI gateway configuration.
+</ParamField>
+
+<ParamField path="--webui-session-secret-key" type="string">
+  Session secret key for Web UI.
+</ParamField>
+
+<ParamField path="--webui-fastapi-host" type="string">
+  Host for Web UI FastAPI server.
+</ParamField>
+
+<ParamField path="--webui-fastapi-port" type="integer">
+  Port for Web UI FastAPI server.
+</ParamField>
+
+<ParamField path="--webui-fastapi-https-port" type="integer">
+  HTTPS port for Web UI FastAPI server.
+</ParamField>
+
+<ParamField path="--webui-ssl-keyfile" type="string">
+  SSL key file path for Web UI.
+</ParamField>
+
+<ParamField path="--webui-ssl-certfile" type="string">
+  SSL certificate file path for Web UI.
+</ParamField>
+
+<ParamField path="--webui-ssl-keyfile-password" type="string">
+  SSL key file passphrase for Web UI.
+</ParamField>
+
+<ParamField path="--webui-enable-embed-resolution" type="boolean">
+  Enable embed resolution for Web UI.
+</ParamField>
+
+<ParamField path="--webui-frontend-welcome-message" type="string">
+  Frontend welcome message for Web UI.
+</ParamField>
+
+<ParamField path="--webui-frontend-bot-name" type="string">
+  Frontend bot name for Web UI.
+</ParamField>
+
+<ParamField path="--webui-frontend-collect-feedback" type="boolean">
+  Enable feedback collection in Web UI.
+</ParamField>
+
+<ParamField path="--web-ui-gateway-database-url" type="string">
+  Database URL for the WebUI Gateway.
+</ParamField>
+
+### Platform Service
+
+<ParamField path="--platform-api-host" type="string">
+  Host for Platform API server.
+</ParamField>
+
+<ParamField path="--platform-api-port" type="integer">
+  Port for Platform API server.
+</ParamField>
+
+## Examples
+
+### Interactive Initialization
+
+```bash
+sam init
+```
+
+Runs the initialization wizard with prompts for all configuration options.
+
+### GUI-Based Initialization
+
+```bash
+sam init --gui
+```
+
+Launches a web browser interface for configuring your project.
+
+### Non-Interactive with Defaults
+
+```bash
+sam init --skip
+```
+
+Creates a project using all default values without prompting.
+
+### Dev Mode Initialization
+
+```bash
+sam init --dev-mode --skip
+```
+
+Initializes a project in development mode (bypasses broker setup).
+
+### Custom Broker Configuration
+
+```bash
+sam init \
+  --broker-type solace \
+  --broker-url ws://my-broker.example.com:8008 \
+  --broker-vpn my-vpn \
+  --broker-username admin \
+  --broker-password secret \
+  --skip
+```
+
+### Custom LLM and Namespace
+
+```bash
+sam init \
+  --llm-service-endpoint https://api.openai.com/v1 \
+  --llm-service-api-key sk-xxx \
+  --llm-service-planning-model-name gpt-4 \
+  --llm-service-general-model-name gpt-3.5-turbo \
+  --namespace mycompany/production \
+  --skip
+```
+
+## Output
+
+Upon successful initialization, the command creates:
+
+```
+project-directory/
+├── configs/
+│   ├── agents/
+│   │   └── orchestrator_agent.yaml
+│   └── gateways/
+│       └── webui_gateway_config.yaml
+├── data/
+├── src/
+├── .env
+└── docker-compose.yml (if using container broker)
+```
+
+**Terminal Output:**
+
+```
+Initializing Solace Application Project...
+Project will be initialized in: /path/to/project
+
+--- Step 1 of 7: Broker Setup ---
+[Broker configuration output]
+
+--- Step 2 of 7: Project Directory Setup ---
+[Directory creation output]
+
+...
+
+Project initialization complete!
+Review the generated files, especially .env and configuration YAMLs.
+Next steps: Consider running 'solace-agent-mesh run' or 'sam run'.
+```
+
+## Notes
+
+- The initialization process creates configuration files in the current directory
+- If `--gui` is used with `--skip`, the CLI will proceed with non-interactive mode
+- Dev mode (`--dev-mode`) bypasses the broker setup for local development
+- Review and update the generated `.env` file with your actual credentials and endpoints
+- All configuration files use YAML format with environment variable substitution
+
+## See Also
+
+- [sam run](/api/cli/run) - Run your Solace Agent Mesh application
+- [sam add](/api/cli/add) - Add agents, gateways, or proxies to your project

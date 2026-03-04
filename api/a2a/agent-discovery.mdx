@@ -1,0 +1,596 @@
+---
+title: 'Agent Discovery'
+description: 'Agent card publishing and discovery mechanism for dynamic agent registration'
+icon: 'satellite-dish'
+---
+
+## Overview
+
+Solace Agent Mesh uses **Agent Cards** for dynamic agent discovery. Agents, workflows, and gateways publish their capabilities, allowing other components to discover and invoke them without static configuration.
+
+## Agent Card Structure
+
+An **Agent Card** describes an agent's capabilities:
+
+```json
+{
+  "name": "OrderValidator",
+  "display_name": "Order Validation Agent",
+  "description": "Validates order structure and business rules",
+  "url": "solace:production/a2a/v1/agent/request/OrderValidator",
+  "version": "1.2.0",
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "skills": [
+    {
+      "id": "validate_order",
+      "name": "Validate Order",
+      "description": "Validates order data against business rules",
+      "tags": ["validation", "orders"],
+      "examples": [
+        "Validate order ORD-123",
+        "Check if this order is valid"
+      ]
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "extensions": [
+      {
+        "uri": "https://solace.com/a2a/extensions/sam/agent-type",
+        "description": "Specifies the type of agent",
+        "params": {
+          "type": "agent"
+        }
+      },
+      {
+        "uri": "https://solace.com/a2a/extensions/sam/schemas",
+        "description": "Input and output JSON schemas",
+        "params": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "order_id": {"type": "string"},
+              "items": {"type": "array"}
+            },
+            "required": ["order_id"]
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "valid": {"type": "boolean"},
+              "errors": {"type": "array"}
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+<ParamField path="name" type="string" required>
+  Unique agent identifier. Used for invocation.
+  
+  **Must match** the agent name in configuration.
+</ParamField>
+
+<ParamField path="display_name" type="string">
+  Human-readable display name.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of agent's purpose and capabilities.
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  Agent invocation URL. Uses `solace:` protocol with request topic:
+  
+  ```
+  solace:{namespace}/a2a/v1/agent/request/{agent_name}
+  ```
+</ParamField>
+
+<ParamField path="version" type="string">
+  Agent version (semantic versioning recommended).
+</ParamField>
+
+<ParamField path="defaultInputModes" type="array">
+  Default input modes: `["text"]`, `["text", "image"]`, etc.
+</ParamField>
+
+<ParamField path="defaultOutputModes" type="array">
+  Default output modes: `["text"]`, `["text", "data"]`, etc.
+</ParamField>
+
+<ParamField path="skills" type="array">
+  Array of skills this agent provides (see below).
+</ParamField>
+
+<ParamField path="capabilities" type="object">
+  Agent capabilities and extensions (see below).
+</ParamField>
+
+## Skills
+
+Skills describe specific tasks the agent can perform:
+
+```json
+{
+  "id": "validate_order",
+  "name": "Validate Order",
+  "description": "Validates order data against business rules",
+  "tags": ["validation", "orders", "e-commerce"],
+  "examples": [
+    "Validate order ORD-123",
+    "Check if this order is valid",
+    "Verify order data"
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string"},
+      "items": {"type": "array"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "valid": {"type": "boolean"},
+      "errors": {"type": "array"}
+    }
+  }
+}
+```
+
+<ParamField path="id" type="string" required>
+  Unique skill identifier.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Human-readable skill name.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Detailed description of what the skill does.
+</ParamField>
+
+<ParamField path="tags" type="array">
+  Tags for categorization and search:
+  - Domain: `"orders"`, `"customers"`, `"inventory"`
+  - Function: `"validation"`, `"enrichment"`, `"analysis"`
+  - Category: `"e-commerce"`, `"finance"`, `"healthcare"`
+</ParamField>
+
+<ParamField path="examples" type="array">
+  Example user prompts that would invoke this skill.
+</ParamField>
+
+<ParamField path="input_schema" type="object">
+  JSON Schema for skill input.
+</ParamField>
+
+<ParamField path="output_schema" type="object">
+  JSON Schema for skill output.
+</ParamField>
+
+## Capabilities and Extensions
+
+### Streaming Support
+
+```json
+{
+  "capabilities": {
+    "streaming": true  // Agent supports streaming responses
+  }
+}
+```
+
+### SAM Extensions
+
+SAM uses extensions to provide additional metadata:
+
+#### Agent Type Extension
+
+Indicates whether component is an agent, workflow, or gateway:
+
+```json
+{
+  "uri": "https://solace.com/a2a/extensions/sam/agent-type",
+  "description": "Specifies the type of agent",
+  "params": {
+    "type": "agent"  // "agent" | "workflow" | "gateway"
+  }
+}
+```
+
+#### Schemas Extension
+
+Provides input/output schemas for the agent/workflow:
+
+```json
+{
+  "uri": "https://solace.com/a2a/extensions/sam/schemas",
+  "description": "Input and output JSON schemas",
+  "params": {
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "order_id": {"type": "string"},
+        "customer_id": {"type": "string"}
+      },
+      "required": ["order_id"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "valid": {"type": "boolean"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}
+```
+
+**Source:** `src/solace_agent_mesh/common/constants.py:20-21`
+
+#### Workflow Visualization Extension
+
+For workflows, includes the complete workflow configuration:
+
+```json
+{
+  "uri": "https://solace.com/a2a/extensions/sam/workflow-visualization",
+  "description": "JSON configuration of the workflow",
+  "params": {
+    "workflow_config": {
+      "nodes": [
+        {
+          "id": "validate",
+          "type": "agent",
+          "agent_name": "OrderValidator"
+        },
+        {
+          "id": "process",
+          "type": "agent",
+          "agent_name": "OrderProcessor",
+          "depends_on": ["validate"]
+        }
+      ],
+      "description": "Order processing workflow",
+      "input_schema": { ... },
+      "output_schema": { ... }
+    }
+  }
+}
+```
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:25`
+
+## Publishing Agent Cards
+
+### Periodic Publishing
+
+Agents publish their cards periodically to maintain presence:
+
+```yaml
+# Agent configuration
+agent_card_publishing:
+  interval_seconds: 10  # Publish every 10 seconds
+```
+
+**Implementation:**
+
+```python
+def setup_periodic_agent_card_publishing(self):
+    publish_interval_sec = self.get_config(
+        "agent_card_publishing.interval_seconds", 10
+    )
+    
+    # Publish immediately
+    self.publish_agent_card()
+    
+    # Schedule periodic publishing
+    self.add_timer(
+        delay_ms=publish_interval_sec * 1000,
+        timer_id="agent_card_publish",
+        interval_ms=publish_interval_sec * 1000,
+        callback=lambda timer_data: self.publish_agent_card()
+    )
+```
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:182-215`
+
+### Publishing to Discovery Topic
+
+```python
+def publish_agent_card(self):
+    agent_card = self.create_agent_card()
+    
+    discovery_topic = a2a.get_agent_discovery_topic(self.namespace)
+    # => "{namespace}/a2a/v1/discovery/agentcards"
+    
+    self.publish_a2a_message(
+        payload=agent_card.model_dump(exclude_none=True),
+        topic=discovery_topic
+    )
+```
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:217-234`
+
+### Discovery Topics
+
+```python
+# Agent discovery topic (publish)
+a2a.get_agent_discovery_topic(namespace)
+# => "{namespace}/a2a/v1/discovery/agentcards"
+
+# Gateway discovery topic (publish)
+a2a.get_gateway_discovery_topic(namespace)
+# => "{namespace}/a2a/v1/discovery/gatewaycards"
+
+# Discovery subscription topic (subscribe to all)
+a2a.get_discovery_subscription_topic(namespace)
+# => "{namespace}/a2a/v1/discovery/>"
+```
+
+**Source:** `src/solace_agent_mesh/common/a2a/protocol.py:46-62`
+
+## Discovering Agents
+
+### Subscribing to Discovery Topic
+
+```python
+# Subscribe to all discovery messages
+subscription = {
+    "topic": a2a.get_discovery_subscription_topic(namespace)
+}
+# Component receives all agent/gateway cards published
+```
+
+### Agent Registry
+
+Components maintain an internal registry of discovered agents:
+
+```python
+class AgentRegistry:
+    def __init__(self):
+        self.agents: Dict[str, AgentCard] = {}
+        self.last_seen: Dict[str, datetime] = {}
+    
+    def register_agent(self, agent_card: AgentCard):
+        """Register or update agent card."""
+        agent_name = agent_card.name
+        self.agents[agent_name] = agent_card
+        self.last_seen[agent_name] = datetime.now(timezone.utc)
+    
+    def get_agent(self, agent_name: str) -> Optional[AgentCard]:
+        """Retrieve agent card by name."""
+        return self.agents.get(agent_name)
+    
+    def get_agents_by_skill(self, skill_id: str) -> List[AgentCard]:
+        """Find agents providing a specific skill."""
+        return [
+            card for card in self.agents.values()
+            if any(skill.id == skill_id for skill in card.skills)
+        ]
+    
+    def get_agents_by_tag(self, tag: str) -> List[AgentCard]:
+        """Find agents tagged with specific tag."""
+        return [
+            card for card in self.agents.values()
+            if any(
+                tag in skill.tags
+                for skill in card.skills
+                if skill.tags
+            )
+        ]
+```
+
+**Source:** `src/solace_agent_mesh/common/agent_registry.py`
+
+### Handling Agent Card Messages
+
+```python
+def handle_agent_card_message(self, message: SolaceMessage):
+    """Process incoming agent card from discovery topic."""
+    try:
+        payload = message.get_payload()
+        agent_card = AgentCard.model_validate(payload)
+        
+        # Register in local registry
+        self.agent_registry.register_agent(agent_card)
+        
+        log.info(
+            f"Discovered agent: {agent_card.name} "
+            f"({len(agent_card.skills)} skills)"
+        )
+    except Exception as e:
+        log.error(f"Failed to process agent card: {e}")
+    finally:
+        message.call_acknowledgements()
+```
+
+**Source:** `src/solace_agent_mesh/workflow/protocol/event_handlers.py:157-172`
+
+## Workflow Agent Cards
+
+Workflows register as agents with extended metadata:
+
+```json
+{
+  "name": "OrderProcessingWorkflow",
+  "display_name": "Order Processing Pipeline",
+  "description": "End-to-end order processing with validation, pricing, and fulfillment",
+  "url": "solace:production/a2a/v1/agent/request/OrderProcessingWorkflow",
+  "version": "2.1.0",
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "skills": [
+    {
+      "id": "process_order",
+      "name": "Process Order",
+      "description": "Complete order processing pipeline",
+      "tags": ["order", "workflow", "processing"]
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "extensions": [
+      {
+        "uri": "https://solace.com/a2a/extensions/sam/agent-type",
+        "params": {"type": "workflow"}
+      },
+      {
+        "uri": "https://solace.com/a2a/extensions/sam/schemas",
+        "params": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "order_id": {"type": "string"},
+              "customer_id": {"type": "string"},
+              "items": {"type": "array"}
+            },
+            "required": ["order_id", "customer_id", "items"]
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "order_id": {"type": "string"},
+              "status": {"type": "string"},
+              "total": {"type": "number"}
+            }
+          }
+        }
+      },
+      {
+        "uri": "https://solace.com/a2a/extensions/sam/workflow-visualization",
+        "params": {
+          "workflow_config": {
+            "nodes": [
+              {
+                "id": "validate",
+                "type": "agent",
+                "agent_name": "OrderValidator"
+              },
+              {
+                "id": "price",
+                "type": "agent",
+                "agent_name": "PriceCalculator",
+                "depends_on": ["validate"]
+              }
+            ],
+            "description": "Order processing workflow",
+            "output_mapping": {
+              "order_id": "{{workflow.input.order_id}}",
+              "status": "completed",
+              "total": "{{price.output.total}}"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+**Source:** `src/solace_agent_mesh/workflow/component.py:236-368`
+
+## Discovery Configuration
+
+### Enabling Discovery
+
+```yaml
+# Agent configuration
+agent_discovery:
+  enabled: true  # Enable automatic discovery
+
+agent_card_publishing:
+  interval_seconds: 10  # Publish every 10 seconds
+
+agent_card:
+  description: "My agent description"
+  skills:
+    - id: "my_skill"
+      name: "My Skill"
+      description: "Skill description"
+      tags: ["tag1", "tag2"]
+```
+
+### Disabling Discovery
+
+For internal/private agents:
+
+```yaml
+agent_discovery:
+  enabled: false  # Don't publish agent card
+```
+
+## Use Cases
+
+### Dynamic Agent Invocation
+
+Gateway discovers and routes to agents based on skills:
+
+```python
+# User: "I need to validate an order"
+
+# 1. Find agents with validation skill
+validation_agents = agent_registry.get_agents_by_tag("validation")
+
+# 2. Filter by order-related skills
+order_validators = [
+    agent for agent in validation_agents
+    if any("order" in skill.tags for skill in agent.skills)
+]
+
+# 3. Select best agent (e.g., by version, load, etc.)
+target_agent = order_validators[0]
+
+# 4. Invoke agent
+await invoke_agent(
+    agent_name=target_agent.name,
+    message="Validate order ORD-123"
+)
+```
+
+### Workflow Composition
+
+Workflows discover agents at runtime:
+
+```yaml
+nodes:
+  # Discover enrichment agent dynamically
+  - id: enrich
+    type: agent
+    agent_name: "{{discover('customer', 'enrichment')}}"  # Hypothetical
+    input:
+      customer_id: "{{workflow.input.customer_id}}"
+```
+
+### Service Mesh Monitoring
+
+Monitor available agents and their health:
+
+```python
+def monitor_agent_health():
+    """Check for stale agents (not published recently)."""
+    now = datetime.now(timezone.utc)
+    stale_threshold = timedelta(seconds=30)  # 3x publish interval
+    
+    for agent_name, last_seen in agent_registry.last_seen.items():
+        if now - last_seen > stale_threshold:
+            log.warning(f"Agent '{agent_name}' appears offline (last seen: {last_seen})")
+            # Mark as unhealthy or remove from registry
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Task Invocation" icon="paper-plane" href="/api/a2a/task-invocation">
+    Learn how to invoke discovered agents
+  </Card>
+  <Card title="Message Format" icon="envelope" href="/api/a2a/message-format">
+    Understand A2A message structure
+  </Card>
+</CardGroup>

@@ -1,0 +1,336 @@
+---
+title: Artifact Management Tools
+description: Tools for managing files and data within agent sessions
+---
+
+Artifact management tools allow agents to create, read, update, and manage files within user sessions. Artifacts persist across conversation turns and can contain any type of data.
+
+## Tool: list_artifacts
+
+Lists all available data artifact filenames and their versions for the current session.
+
+### Usage
+
+```python
+from solace_agent_mesh.agent.tools.builtin_artifact_tools import list_artifacts
+
+result = await list_artifacts(tool_context=context)
+
+if result.status == "success":
+    artifacts = result.data["artifacts"]
+    for artifact in artifacts:
+        print(f"File: {artifact['filename']}")
+        print(f"Versions: {artifact['versions']}")
+        print(f"Metadata: {artifact['metadata_summary']}")
+```
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "message": "Found 3 artifacts.",
+  "data": {
+    "artifacts": [
+      {
+        "filename": "sales_data.csv",
+        "versions": [0, 1, 2],
+        "metadata_summary": {
+          "description": "Monthly sales data",
+          "type": "text/csv",
+          "size": 15840,
+          "schema_type": "csv"
+        }
+      }
+    ]
+  }
+}
+```
+
+## Tool: load_artifact
+
+Loads the content or metadata of a specific artifact version.
+
+### Parameters
+
+<ParamField path="filename" type="string" required>
+  The name of the artifact to load. May contain embeds like `«artifact_meta:latest_csv_file»`.
+</ParamField>
+
+<ParamField path="version" type="integer" required>
+  The specific version number to load (0-indexed). Use "latest" for most recent version.
+</ParamField>
+
+<ParamField path="load_metadata_only" type="boolean" default={false}>
+  If true, loads only the metadata JSON without content.
+</ParamField>
+
+<ParamField path="max_content_length" type="integer" default={null}>
+  Maximum character length for text content (100-100,000). Uses app configuration if not specified.
+</ParamField>
+
+<ParamField path="include_line_numbers" type="boolean" default={false}>
+  If true, prefix each line with 1-based line number followed by TAB character.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.builtin_artifact_tools import load_artifact
+
+# Load latest version of artifact
+result = await load_artifact(
+    filename="report.md",
+    version="latest",
+    max_content_length=50000,
+    include_line_numbers=True,
+    tool_context=context
+)
+
+if result.status == "success":
+    content = result.data["content"]
+    version_loaded = result.data["version"]
+    mime_type = result.data["mime_type"]
+```
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "message": "Loaded artifact report.md",
+  "data": {
+    "filename": "report.md",
+    "version": 2,
+    "mime_type": "text/markdown",
+    "content": "1\tMarch Sales Report\n2\t==================\n...",
+    "size_bytes": 2048,
+    "metadata": {
+      "description": "Monthly sales report",
+      "created_at": "2024-03-01T10:00:00Z"
+    }
+  }
+}
+```
+
+## Tool: extract_content_from_artifact
+
+Uses an internal LLM to extract or transform content from an artifact based on natural language instructions.
+
+### Parameters
+
+<ParamField path="filename" type="string" required>
+  Name of the source artifact to extract content from.
+</ParamField>
+
+<ParamField path="extraction_goal" type="string" required>
+  Natural language instruction describing what to extract or how to transform the content.
+  
+  Examples:
+  - "Extract all email addresses"
+  - "Summarize the key findings"
+  - "Convert to JSON format"
+  - "List all products with price > $100"
+</ParamField>
+
+<ParamField path="version" type="string" default="latest">
+  Version of the source artifact. Can be integer or "latest".
+</ParamField>
+
+<ParamField path="output_filename_base" type="string" default={null}>
+  Optional base name for saving extracted content as a new artifact.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.builtin_artifact_tools import extract_content_from_artifact
+
+# Extract data from CSV artifact
+result = await extract_content_from_artifact(
+    filename="sales_data.csv",
+    extraction_goal="Extract top 10 products by revenue and format as a table",
+    version="latest",
+    output_filename_base="top_products",
+    tool_context=context
+)
+
+if result.status == "success":
+    extracted_content = result.data.get("extracted_content")
+    # Or if saved as artifact:
+    output_filename = result.data.get("output_filename")
+    output_version = result.data.get("output_version")
+```
+
+### Configuration
+
+The extraction tool can use a different LLM model than the main agent:
+
+```yaml
+builtin_tools:
+  - name: extract_content_from_artifact
+    config:
+      model:
+        model: gpt-4o-mini  # Use faster/cheaper model for extraction
+        temperature: 0.1
+      supported_binary_mime_types:
+        - "application/pdf"
+        - "image/*"
+      tool_output_save_threshold_bytes: 2048
+      tool_output_llm_return_max_bytes: 4096
+```
+
+<ParamField path="supported_binary_mime_types" type="array" default={[]}>
+  List of binary MIME type patterns that can be processed (e.g., `["application/pdf", "image/*"]`).
+</ParamField>
+
+<ParamField path="model" type="object" default={null}>
+  Optional LLM model configuration for extraction. Can be a model string or full config dict.
+</ParamField>
+
+### Response Format
+
+```json
+{
+  "status": "success",
+  "message": "Successfully extracted content from 'sales_data.csv'",
+  "data": {
+    "extracted_content": "| Product | Revenue |\n|---------|---------|\n| Widget A | $45,230 |",
+    "output_filename": "top_products_extract.txt",
+    "output_version": 0,
+    "saved_as_artifact": true
+  }
+}
+```
+
+## Tool: apply_embed_and_create_artifact
+
+Resolves an embed directive (including modifiers and formatting) and saves the result as a new artifact.
+
+### Parameters
+
+<ParamField path="output_filename" type="string" required>
+  The desired name for the new artifact.
+</ParamField>
+
+<ParamField path="embed_directive" type="string" required>
+  The full embed directive string, e.g., `«artifact_content:data.csv>>>format:json»`
+  
+  Supports:
+  - Modifiers: `limit:100`, `offset:50`, `sample:10`
+  - Formats: `html`, `json`, `csv`, `datauri`
+  - Chaining: `«artifact_content:data.json>>>limit:100>>>format:csv»`
+</ParamField>
+
+<ParamField path="output_metadata" type="object" default={null}>
+  Optional metadata dictionary for the new artifact.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.builtin_artifact_tools import apply_embed_and_create_artifact
+
+# Transform CSV to JSON using embed
+result = await apply_embed_and_create_artifact(
+    output_filename="sales_data.json",
+    embed_directive="«artifact_content:sales_data.csv>>>format:json»",
+    output_metadata={
+        "source": "sales_data.csv",
+        "transform": "CSV to JSON"
+    },
+    tool_context=context
+)
+
+if result.status == "success":
+    print(f"Created: {result.data['output_filename']} v{result.data['output_version']}")
+```
+
+## Artifact Metadata
+
+All artifacts include metadata that provides context and schema information:
+
+```json
+{
+  "description": "Monthly sales data for Q1 2024",
+  "source": "uploaded_by_user",
+  "mime_type": "text/csv",
+  "size_bytes": 15840,
+  "created_at": "2024-03-01T10:00:00Z",
+  "schema": {
+    "type": "csv",
+    "inferred": true,
+    "columns": [
+      {"name": "product_id", "type": "integer"},
+      {"name": "product_name", "type": "string"},
+      {"name": "revenue", "type": "number"}
+    ]
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive filenames">
+    Choose clear, descriptive names for artifacts that indicate their content and purpose.
+    
+    ```python
+    # Good
+    filename = "q1_2024_sales_summary.csv"
+    
+    # Avoid
+    filename = "data.csv"
+    ```
+  </Accordion>
+
+  <Accordion title="Include metadata">
+    Always provide descriptive metadata to help track artifact provenance and purpose.
+    
+    ```python
+    metadata = {
+        "description": "Sales data aggregated by product category",
+        "source": "database_query",
+        "query_date": "2024-03-01",
+        "aggregation_level": "category"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Version management">
+    Use version numbers to track artifact evolution. Versions are 0-indexed and immutable.
+    
+    ```python
+    # Load specific version for reproducibility
+    result = await load_artifact(filename="report.md", version=2)
+    
+    # Or always use latest
+    result = await load_artifact(filename="report.md", version="latest")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+Common error scenarios and how to handle them:
+
+```python
+result = await load_artifact(filename="data.csv", version=0, tool_context=context)
+
+if result.status == "error":
+    if "not found" in result.message.lower():
+        # Artifact doesn't exist
+        print("Artifact not found")
+    elif "invalid" in result.message.lower():
+        # Invalid parameters
+        print(f"Invalid parameters: {result.message}")
+    else:
+        # Other error
+        print(f"Error: {result.message}")
+```
+
+## See Also
+
+- [Embeds System](/built-in-tools/embeds) - Advanced artifact referencing
+- [Data Analysis Tools](/built-in-tools/data-analysis) - Analyze artifact content
+- [Tool Configuration](/api/agent/tools) - Configure artifact tools

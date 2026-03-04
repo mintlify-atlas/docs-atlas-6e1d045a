@@ -1,0 +1,672 @@
+---
+title: Plugins
+description: Modular extensions for agents, gateways, and custom integrations
+---
+
+Plugins provide a mechanism to extend Solace Agent Mesh in a modular, shareable, and reusable way. The plugin ecosystem enables you to package agents, gateways, and custom integrations as standard Python packages that can be distributed across projects and teams.
+
+## What are Plugins?
+
+Plugins are **modular Python packages** that extend Agent Mesh capabilities through:
+
+- **Agent Plugins** - Specialized agents with domain-specific capabilities
+- **Gateway Plugins** - New interface types for external system integration
+- **Custom Plugins** - Specialized integrations (HR providers, monitoring tools, etc.)
+
+Plugins integrate seamlessly with the A2A protocol and are managed through the SAM CLI.
+
+<Info>
+Run `sam plugin --help` to see all available plugin commands.
+</Info>
+
+## Plugin vs Standalone Components
+
+Here's when to use each approach:
+
+<CardGroup cols={2}>
+  <Card title="Standalone Component" icon="file">
+    **Best for:**
+    - Rapid prototyping
+    - Project-specific agents
+    - One-off customizations
+    - Quick testing
+    
+    **Created with:**
+    ```bash
+    sam add agent my-agent
+    sam add gateway my-gateway
+    ```
+  </Card>
+  
+  <Card title="Plugin" icon="puzzle-piece">
+    **Best for:**
+    - Reusable components
+    - Cross-project sharing
+    - Production deployments
+    - Team standardization
+    - Open-source distribution
+    
+    **Created with:**
+    ```bash
+    sam plugin create my-plugin
+    ```
+  </Card>
+</CardGroup>
+
+### Detailed Comparison
+
+| Feature | Standalone Component | Plugin |
+|---------|---------------------|--------|
+| **Creation** | Single command creates YAML config | Complete Python project structure |
+| **Structure** | YAML file + optional Python tools | Full package with `pyproject.toml`, `src/`, config templates |
+| **Packaging** | Not packaged | Standard Python wheel (`.whl`) |
+| **Distribution** | Copy files or share project | PyPI, Git, wheel files, package managers |
+| **Reusability** | Within project only | Across projects, teams, organizations |
+| **Installation** | No installation needed | `sam plugin add` or `pip install` |
+| **Versioning** | With project | Independent semantic versioning |
+| **Development** | Direct edit and run | Build/install cycle |
+
+<Tip>
+Treat plugins as **enterprise assets** for any capability intended for broader use or long-term value. Standalone components are tactical tools for immediate, project-specific needs.
+</Tip>
+
+## Official Core Plugins
+
+Solace Agent Mesh provides official core plugins maintained by the Solace Labs team:
+
+<CardGroup cols={2}>
+  <Card title="REST Gateway" icon="globe" href="https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/tree/main/sam-rest-gateway">
+    REST API gateway for task submission and polling
+  </Card>
+  
+  <Card title="Event Mesh Gateway" icon="network-wired" href="https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/tree/main/sam-event-mesh-gateway">
+    Connect external event meshes to the agent mesh
+  </Card>
+  
+  <Card title="Slack Gateway" icon="slack" href="https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/tree/main/sam-slack-gateway">
+    Slack bot integration for team collaboration
+  </Card>
+  
+  <Card title="More Plugins" icon="arrow-right" href="https://github.com/SolaceLabs/solace-agent-mesh-core-plugins">
+    View all official plugins on GitHub
+  </Card>
+</CardGroup>
+
+## Creating a Plugin
+
+### Initialize Plugin
+
+Use the SAM CLI to create a new plugin:
+
+```bash
+sam plugin create my-plugin
+```
+
+Follow the interactive prompts to select plugin type:
+
+<Tabs>
+  <Tab title="Agent Plugin">
+    Creates a plugin that provides custom agents:
+    - Pre-configured agent templates
+    - Custom Python tools
+    - Domain-specific capabilities
+  </Tab>
+  
+  <Tab title="Gateway Plugin">
+    Creates a plugin that provides gateway interfaces:
+    - Protocol adapters
+    - Authentication handlers
+    - External system integrations
+  </Tab>
+  
+  <Tab title="Custom Plugin">
+    Creates a plugin for specialized functionality:
+    - HR/identity providers
+    - Monitoring integrations
+    - Custom services
+  </Tab>
+</Tabs>
+
+### Plugin Structure
+
+The CLI creates a standard Python project:
+
+```
+my-plugin/
+├── src/
+│   ├── __init__.py
+│   ├── app.py              # Main application class (for agents/gateways)
+│   ├── component.py        # Component implementation
+│   └── tools/              # Custom tools (for agent plugins)
+│       └── my_tool.py
+├── config.yaml             # Plugin configuration template
+├── pyproject.toml          # Python package metadata
+├── README.md               # Documentation
+└── .gitignore
+```
+
+### Configuration Template
+
+The `config.yaml` defines how the plugin is used:
+
+```yaml
+# Agent Plugin Example
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: {component_name}.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: {component_name}_app
+    app_base_path: .
+    app_module: my_plugin.app  # Points to your plugin module
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      agent_name: "{component_name}"
+      model: *planning_model
+      
+      instruction: |
+        You are a specialized agent that...
+      
+      tools:
+        - tool_type: python
+          component_module: my_plugin.tools.my_tool
+          function_name: my_function
+          tool_name: "my_tool"
+      
+      # ... rest of agent configuration
+```
+
+Placeholders like `{component_name}` are replaced when users install the plugin.
+
+### Package Metadata
+
+The `pyproject.toml` defines package information:
+
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-plugin"
+version = "0.1.0"
+description = "Custom agent for specialized tasks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "solace-agent-mesh>=1.0.0",
+    # Add plugin-specific dependencies
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+]
+```
+
+## Building and Distributing
+
+### Build the Plugin
+
+Create a distributable wheel package:
+
+```bash
+cd my-plugin
+sam plugin build
+```
+
+<Note>
+Requires the `build` package: `pip install build`
+</Note>
+
+This generates:
+```
+dist/
+├── my_plugin-0.1.0-py3-none-any.whl
+└── my_plugin-0.1.0.tar.gz
+```
+
+### Distribution Methods
+
+<Tabs>
+  <Tab title="PyPI (Public)">
+    ```bash
+    # Install twine
+    pip install twine
+    
+    # Upload to PyPI
+    twine upload dist/*
+    ```
+    
+    Users install with:
+    ```bash
+    sam plugin add my-component --plugin my-plugin
+    ```
+  </Tab>
+  
+  <Tab title="Git Repository">
+    ```bash
+    # Push to GitHub/GitLab
+    git push origin main
+    ```
+    
+    Users install with:
+    ```bash
+    sam plugin add my-component \
+      --plugin "git+https://github.com/org/my-plugin"
+    
+    # For subdirectories:
+    sam plugin add my-component \
+      --plugin "git+https://github.com/org/repo#subdirectory=my-plugin"
+    ```
+  </Tab>
+  
+  <Tab title="Wheel File">
+    ```bash
+    # Share the wheel file directly
+    cp dist/my_plugin-0.1.0-py3-none-any.whl /shared/location/
+    ```
+    
+    Users install with:
+    ```bash
+    sam plugin add my-component \
+      --plugin "/path/to/my_plugin-0.1.0-py3-none-any.whl"
+    ```
+  </Tab>
+  
+  <Tab title="Local Development">
+    ```bash
+    # No build needed for local development
+    cd /path/to/my-plugin
+    ```
+    
+    Users install with:
+    ```bash
+    sam plugin add my-component --plugin "/path/to/my-plugin"
+    ```
+  </Tab>
+</Tabs>
+
+## Using Plugins
+
+### Install and Configure
+
+The `plugin add` command performs two operations:
+
+1. **Installs** the plugin package (if not already installed)
+2. **Creates** a component configuration from the plugin template
+
+```bash
+sam plugin add <COMPONENT_NAME> --plugin <PLUGIN_SOURCE>
+```
+
+Where:
+- `<COMPONENT_NAME>` - Name for the component instance in your project
+- `<PLUGIN_SOURCE>` - One of:
+  - PyPI package name: `my-plugin`
+  - Git repository: `git+https://github.com/org/repo`
+  - Local directory: `./my-plugin`
+  - Wheel file: `./dist/my_plugin-0.1.0-py3-none-any.whl`
+
+### Examples
+
+<CodeGroup>
+```bash PyPI Package
+sam plugin add weather-agent --plugin sam-weather-agent
+```
+
+```bash GitHub Repository
+sam plugin add slack-gateway \
+  --plugin "git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-slack-gateway"
+```
+
+```bash Local Development
+sam plugin add my-agent --plugin ./plugins/my-agent
+```
+
+```bash Wheel File
+sam plugin add custom-gateway \
+  --plugin "./dist/custom_gateway-1.0.0-py3-none-any.whl"
+```
+</CodeGroup>
+
+### Custom Package Manager
+
+Override the installation command:
+
+```bash
+# Use uv instead of pip
+export SAM_PLUGIN_INSTALL_COMMAND="uv pip install {package}"
+sam plugin add my-agent --plugin my-plugin
+
+# Or pass directly
+sam plugin add my-agent --plugin my-plugin \
+  --install-command "uv pip install {package}"
+```
+
+### Plugin Catalog
+
+Browse and manage plugins with the catalog UI:
+
+```bash
+sam plugin catalog
+```
+
+This launches an interactive interface showing:
+- Available plugins from configured sources
+- Installed plugins
+- Plugin descriptions and versions
+- One-click installation
+
+## Example Plugin: Weather Agent
+
+Here's a complete example of a weather agent plugin:
+
+<Accordion title="View Plugin Structure">
+```
+sam-weather-agent/
+├── src/
+│   └── sam_weather_agent/
+│       ├── __init__.py
+│       ├── app.py
+│       └── tools/
+│           └── weather_api.py
+├── config.yaml
+├── pyproject.toml
+└── README.md
+```
+</Accordion>
+
+<Accordion title="weather_api.py - Custom Tool">
+```python
+import os
+import requests
+from typing import Dict, Any
+
+def get_weather(location: str) -> Dict[str, Any]:
+    """
+    Fetch current weather for a location.
+    
+    Args:
+        location: City name or coordinates
+    
+    Returns:
+        Weather data including temperature, conditions, etc.
+    """
+    api_key = os.getenv("WEATHER_API_KEY")
+    if not api_key:
+        return {"error": "WEATHER_API_KEY not set"}
+    
+    url = f"https://api.openweathermap.org/data/2.5/weather"
+    params = {
+        "q": location,
+        "appid": api_key,
+        "units": "metric"
+    }
+    
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        return {
+            "location": data["name"],
+            "temperature": data["main"]["temp"],
+            "conditions": data["weather"][0]["description"],
+            "humidity": data["main"]["humidity"],
+            "wind_speed": data["wind"]["speed"]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+```
+</Accordion>
+
+<Accordion title="config.yaml - Plugin Configuration">
+```yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: {component_name}.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: {component_name}_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      agent_name: "{component_name}"
+      display_name: "Weather Agent"
+      model: *general_model
+      
+      instruction: |
+        You are a weather information agent. You can provide current weather
+        information for any location using the get_weather tool. Always include
+        temperature, conditions, and relevant details in your responses.
+      
+      tools:
+        - tool_type: python
+          component_module: sam_weather_agent.tools.weather_api
+          component_base_path: .
+          function_name: get_weather
+          tool_name: "get_weather"
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+      
+      agent_card:
+        description: "Provides current weather information for any location"
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: "get_weather"
+            name: "Weather Lookup"
+            description: "Fetches current weather data including temperature, conditions, humidity, and wind speed for any city or location"
+      
+      agent_card_publishing:
+        interval_seconds: 10
+      
+      agent_discovery:
+        enabled: true
+      
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 60
+```
+</Accordion>
+
+<Accordion title="pyproject.toml - Package Metadata">
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sam-weather-agent"
+version = "1.0.0"
+description = "Weather information agent for Solace Agent Mesh"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+license = {text = "Apache-2.0"}
+dependencies = [
+    "solace-agent-mesh>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourorg/sam-weather-agent"
+Documentation = "https://github.com/yourorg/sam-weather-agent#readme"
+Repository = "https://github.com/yourorg/sam-weather-agent"
+```
+</Accordion>
+
+### Using the Weather Plugin
+
+```bash
+# Install from PyPI
+sam plugin add weather --plugin sam-weather-agent
+
+# Set API key
+export WEATHER_API_KEY="your-api-key"
+
+# Run the agent
+sam run configs/agents/weather.yaml
+```
+
+## Plugin Development Best Practices
+
+<AccordionGroup>
+  <Accordion title="Configuration Templates">
+    - Use placeholders like `{component_name}` for customization
+    - Reference shared config with `!include ../shared_config.yaml`
+    - Provide sensible defaults
+    - Document required environment variables
+  </Accordion>
+  
+  <Accordion title="Documentation">
+    - Include comprehensive README with:
+      - Installation instructions
+      - Configuration examples
+      - Environment variable requirements
+      - Usage examples
+    - Document custom tools with clear docstrings
+    - Provide troubleshooting guidance
+  </Accordion>
+  
+  <Accordion title="Dependencies">
+    - Minimize external dependencies
+    - Pin major versions for stability
+    - List optional dependencies separately
+    - Test with minimum required versions
+  </Accordion>
+  
+  <Accordion title="Versioning">
+    - Follow semantic versioning (MAJOR.MINOR.PATCH)
+    - Update version in `pyproject.toml`
+    - Tag releases in Git
+    - Maintain a CHANGELOG
+  </Accordion>
+  
+  <Accordion title="Testing">
+    - Include unit tests for custom tools
+    - Test with different Python versions (3.10+)
+    - Validate configuration templates
+    - Test installation from wheel
+  </Accordion>
+</AccordionGroup>
+
+## Plugin Registry
+
+Configure custom plugin sources:
+
+```yaml
+# ~/.sam/plugin_registry.yaml
+registries:
+  - name: "official"
+    type: "github"
+    url: "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+  
+  - name: "corporate"
+    type: "pypi"
+    url: "https://pypi.internal.example.com/simple"
+  
+  - name: "local"
+    type: "directory"
+    path: "/shared/sam-plugins"
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Plugin installation fails">
+    Check:
+    - Python version is 3.10 or higher
+    - Plugin package name is correct
+    - Network access to package source
+    - Virtual environment is activated
+    
+    Try manual installation:
+    ```bash
+    pip install my-plugin
+    sam plugin add my-component --plugin my-plugin
+    ```
+  </Accordion>
+  
+  <Accordion title="Configuration not created">
+    Check:
+    - Plugin contains valid `config.yaml`
+    - `configs/` directory exists in project
+    - Write permissions for config directory
+    
+    Manually copy configuration:
+    ```bash
+    cp $(python -c "import my_plugin; print(my_plugin.__path__[0])")/config.yaml \
+       configs/agents/my_component.yaml
+    ```
+  </Accordion>
+  
+  <Accordion title="Custom tools not found">
+    Check:
+    - Plugin package is installed: `pip show my-plugin`
+    - Module path in config matches actual structure
+    - `component_base_path` is set correctly
+    - Python path includes plugin location
+  </Accordion>
+  
+  <Accordion title="Version conflicts">
+    Check:
+    - Plugin dependencies don't conflict with project
+    - `solace-agent-mesh` version compatibility
+    
+    Use dependency resolver:
+    ```bash
+    pip install --upgrade pip
+    pip install my-plugin --dry-run
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Plugins" icon="github" href="https://github.com/SolaceLabs/solace-agent-mesh-core-plugins">
+    Browse official plugin repository
+  </Card>
+  
+  <Card title="Creating Agents" icon="robot" href="/developing/create-agents">
+    Learn agent development patterns
+  </Card>
+  
+  <Card title="Python Tools" icon="python" href="/developing/creating-python-tools">
+    Build custom tool functions
+  </Card>
+  
+  <Card title="Custom Gateways" icon="plug" href="/developing/create-gateways">
+    Develop gateway plugins
+  </Card>
+</CardGroup>

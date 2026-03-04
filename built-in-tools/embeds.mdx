@@ -1,0 +1,515 @@
+---
+title: Embeds System
+description: Dynamic content interpolation and artifact references in Solace Agent Mesh
+---
+
+The embeds system provides a powerful mechanism for dynamic content interpolation, artifact references, and data transformations within Solace Agent Mesh.
+
+## Overview
+
+Embeds allow you to reference and manipulate content dynamically using a special syntax:
+
+```
+«embed_type:expression | format»
+```
+
+- **«** and **»**: Embed delimiters (guillemets)
+- **embed_type**: The type of embed (e.g., `artifact_content`, `datetime`, `math`)
+- **expression**: The expression to evaluate
+- **format** (optional): Output format modifier
+
+## Embed Types
+
+Embeds are categorized into two groups based on when they're resolved:
+
+### Early Embeds
+
+Resolved before tool execution, during parameter processing:
+
+<ParamField path="datetime" type="early">
+  Current date/time in various formats.
+  
+  ```
+  «datetime:now»
+  «datetime:now | iso»
+  «datetime:now | %Y-%m-%d»
+  ```
+</ParamField>
+
+<ParamField path="math" type="early">
+  Mathematical expressions.
+  
+  ```
+  «math:2 + 2»
+  «math:sqrt(16)»
+  «math:pi * radius**2»
+  ```
+</ParamField>
+
+<ParamField path="uuid" type="early">
+  Generate unique identifiers.
+  
+  ```
+  «uuid:v4»
+  «uuid:hex»
+  ```
+</ParamField>
+
+<ParamField path="artifact_meta" type="early">
+  Access artifact metadata.
+  
+  ```
+  «artifact_meta:data.csv:latest:size»
+  «artifact_meta:report.md:0:description»
+  ```
+</ParamField>
+
+### Late Embeds
+
+Resolved after tool execution, typically for content output:
+
+<ParamField path="artifact_content" type="late">
+  Load artifact content with transformations.
+  
+  ```
+  «artifact_content:data.csv»
+  «artifact_content:data.csv | json»
+  «artifact_content:report.md:0»
+  ```
+</ParamField>
+
+<ParamField path="artifact_return" type="late">
+  Signal that artifact should be returned to user.
+  
+  ```
+  «artifact_return:output.pdf»
+  ```
+</ParamField>
+
+## Artifact Content Embeds
+
+The most powerful embed type for working with artifacts.
+
+### Basic Syntax
+
+```
+«artifact_content:filename»
+«artifact_content:filename:version»
+```
+
+### Examples
+
+```python
+# Load latest version of CSV
+content = "«artifact_content:sales_data.csv»"
+
+# Load specific version
+content = "«artifact_content:report.md:2»"
+
+# Load with line numbers
+content = "«artifact_content:code.py | line_numbers»"
+```
+
+### Modifiers
+
+Modifiers transform the content before it's returned:
+
+<AccordionGroup>
+  <Accordion title="limit - Limit output size">
+    ```
+    «artifact_content:data.csv>>>limit:100»
+    ```
+    
+    Limits output to first 100 characters.
+  </Accordion>
+
+  <Accordion title="offset - Skip initial content">
+    ```
+    «artifact_content:data.csv>>>offset:50>>>limit:100»
+    ```
+    
+    Skip first 50 characters, then take next 100.
+  </Accordion>
+
+  <Accordion title="sample - Random sampling">
+    ```
+    «artifact_content:large_data.csv>>>sample:10»
+    ```
+    
+    Take 10 random lines/records from the content.
+  </Accordion>
+
+  <Accordion title="line_numbers - Add line numbers">
+    ```
+    «artifact_content:script.py>>>line_numbers»
+    ```
+    
+    Prefix each line with its line number.
+  </Accordion>
+</AccordionGroup>
+
+### Format Transformations
+
+The `format` specifier transforms content into different formats:
+
+<ParamField path="json" type="format">
+  Convert to JSON format.
+  
+  ```
+  «artifact_content:data.csv | json»
+  ```
+</ParamField>
+
+<ParamField path="json_pretty" type="format">
+  Convert to pretty-printed JSON.
+  
+  ```
+  «artifact_content:data.csv | json_pretty»
+  ```
+</ParamField>
+
+<ParamField path="csv" type="format">
+  Convert to CSV format.
+  
+  ```
+  «artifact_content:data.json | csv»
+  ```
+</ParamField>
+
+<ParamField path="html" type="format">
+  Convert to HTML table.
+  
+  ```
+  «artifact_content:data.csv | html»
+  ```
+</ParamField>
+
+<ParamField path="datauri" type="format">
+  Convert to base64 data URI.
+  
+  ```
+  «artifact_content:image.png | datauri»
+  ```
+</ParamField>
+
+### Chaining Operations
+
+Use `>>>` to chain multiple operations:
+
+```
+«artifact_content:large_data.csv>>>sample:100>>>format:json»
+```
+
+This:
+1. Takes 100 random samples from the CSV
+2. Converts the result to JSON format
+
+### Complete Examples
+
+#### Example 1: Transform CSV to JSON
+
+```python
+from solace_agent_mesh.agent.tools.builtin_artifact_tools import apply_embed_and_create_artifact
+
+# Convert CSV to JSON with sampling
+result = await apply_embed_and_create_artifact(
+    output_filename="data_sample.json",
+    embed_directive="«artifact_content:sales_data.csv>>>sample:50>>>format:json_pretty»",
+    output_metadata={
+        "source": "sales_data.csv",
+        "transformation": "50 random samples to JSON"
+    },
+    tool_context=context
+)
+```
+
+#### Example 2: Extract Specific Lines
+
+```python
+# Get lines 100-200 from a log file
+result = await apply_embed_and_create_artifact(
+    output_filename="log_excerpt.txt",
+    embed_directive="«artifact_content:application.log>>>offset:100>>>limit:100>>>line_numbers»",
+    tool_context=context
+)
+```
+
+#### Example 3: Create HTML Report
+
+```python
+# Convert data to HTML table for reporting
+result = await apply_embed_and_create_artifact(
+    output_filename="report.html",
+    embed_directive="«artifact_content:monthly_stats.csv>>>format:html»",
+    output_metadata={
+        "title": "Monthly Statistics Report",
+        "generated": "«datetime:now | iso»"
+    },
+    tool_context=context
+)
+```
+
+## Datetime Embeds
+
+Generate timestamps and dates dynamically.
+
+### Syntax
+
+```
+«datetime:now»
+«datetime:now | format»
+```
+
+### Format Examples
+
+```python
+# ISO 8601 format
+"Generated at «datetime:now | iso»"
+# Output: "Generated at 2024-03-01T10:30:00Z"
+
+# Custom format
+"Date: «datetime:now | %Y-%m-%d»"
+# Output: "Date: 2024-03-01"
+
+# Time only
+"Time: «datetime:now | %H:%M:%S»"
+# Output: "Time: 10:30:00"
+
+# Full datetime
+"«datetime:now | %B %d, %Y at %I:%M %p»"
+# Output: "March 01, 2024 at 10:30 AM"
+```
+
+### Common Format Codes
+
+- `%Y`: Year (4 digits)
+- `%m`: Month (01-12)
+- `%d`: Day (01-31)
+- `%H`: Hour 24-hour (00-23)
+- `%I`: Hour 12-hour (01-12)
+- `%M`: Minute (00-59)
+- `%S`: Second (00-59)
+- `%p`: AM/PM
+- `%B`: Full month name
+- `%b`: Abbreviated month name
+
+## Math Embeds
+
+Evaluate mathematical expressions.
+
+### Syntax
+
+```
+«math:expression»
+```
+
+### Examples
+
+```python
+# Basic arithmetic
+"Total: «math:100 + 50»"
+# Output: "Total: 150"
+
+# With variables (if supported)
+"Area: «math:pi * radius**2»"
+
+# Functions
+"Square root: «math:sqrt(16)»"
+# Output: "Square root: 4.0"
+```
+
+## UUID Embeds
+
+Generate unique identifiers.
+
+### Syntax
+
+```
+«uuid:v4»      # Standard UUID v4
+«uuid:hex»     # Hexadecimal UUID
+```
+
+### Examples
+
+```python
+# Generate unique filename
+filename = "report_«uuid:v4».pdf"
+# Output: "report_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d.pdf"
+
+# Generate short ID
+id = "task_«uuid:hex»"
+# Output: "task_a1b2c3d4e5f64a7b8c9d0e1f2a3b4c5d"
+```
+
+## Artifact Metadata Embeds
+
+Access artifact metadata without loading full content.
+
+### Syntax
+
+```
+«artifact_meta:filename:version:field»
+«artifact_meta:filename:latest:field»
+```
+
+### Available Fields
+
+- `description`: Artifact description
+- `size`: File size in bytes
+- `mime_type`: MIME type
+- `created_at`: Creation timestamp
+- `schema`: Schema information (for structured data)
+
+### Examples
+
+```python
+# Get file size
+size = "File size: «artifact_meta:data.csv:latest:size» bytes"
+
+# Get description
+desc = "Description: «artifact_meta:report.md:0:description»"
+
+# Get MIME type
+type = "Type: «artifact_meta:image.png:latest:mime_type»"
+```
+
+## Embed Resolution
+
+Embeds are resolved at different stages:
+
+<Steps>
+  <Step title="Early Resolution (Parameter Processing)">
+    Early embeds are resolved when processing tool parameters:
+    - `datetime`: Current timestamp
+    - `math`: Mathematical calculations
+    - `uuid`: Unique ID generation
+    - `artifact_meta`: Metadata retrieval
+  </Step>
+  
+  <Step title="Late Resolution (Content Output)">
+    Late embeds are resolved when generating output:
+    - `artifact_content`: Full content loading
+    - `artifact_return`: Output signaling
+  </Step>
+</Steps>
+
+## Configuration
+
+Embed behavior can be configured globally:
+
+```yaml
+agent:
+  embed_config:
+    gateway_artifact_content_limit_bytes: 1048576  # 1MB limit
+    gateway_recursive_embed_depth: 3  # Max nesting level
+    schema_max_keys: 100  # Max schema keys to infer
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Appropriate Embed Types">
+    Choose the right embed type for your use case:
+    - Use `artifact_content` for loading data
+    - Use `artifact_meta` when you only need metadata
+    - Use `datetime` for timestamps
+    - Use `uuid` for unique identifiers
+  </Accordion>
+
+  <Accordion title="Chain Operations Efficiently">
+    Order operations for efficiency:
+    
+    ```
+    # Good: Sample first, then transform
+    «artifact_content:data.csv>>>sample:100>>>format:json»
+    
+    # Less efficient: Transform entire file, then sample
+    «artifact_content:data.csv>>>format:json>>>sample:100»
+    ```
+  </Accordion>
+
+  <Accordion title="Use Limits for Large Files">
+    Always use limits when working with large files:
+    
+    ```
+    «artifact_content:huge_log.txt>>>limit:1000»
+    «artifact_content:big_data.csv>>>sample:50»
+    ```
+  </Accordion>
+
+  <Accordion title="Validate Embed Syntax">
+    Use the correct delimiter characters:
+    - Use `«` and `»` (guillemets), not `<` and `>`
+    - Use `>>>` for chaining, not `>>`
+    - Use `|` for format, not `::`
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+When embeds fail to resolve:
+
+```python
+# Embed resolution returns error messages
+result = "«artifact_content:nonexistent.csv»"
+# Returns: "[Error: Artifact 'nonexistent.csv' not found]"
+
+result = "«artifact_content:data.csv>>>invalid_modifier»"
+# Returns: "[Error: Unknown modifier 'invalid_modifier']"
+```
+
+## Advanced Examples
+
+### Example 1: Dynamic Report Generation
+
+```python
+# Generate report with dynamic content
+report_template = f"""
+# Sales Report
+
+Generated: «datetime:now | %B %d, %Y»
+Report ID: «uuid:hex»
+
+## Data Summary
+
+«artifact_content:sales_summary.csv | html»
+
+## Recent Transactions
+
+«artifact_content:transactions.csv>>>sample:10>>>format:json_pretty»
+
+File size: «artifact_meta:transactions.csv:latest:size» bytes
+"""
+
+result = await apply_embed_and_create_artifact(
+    output_filename="sales_report.md",
+    embed_directive=report_template,
+    tool_context=context
+)
+```
+
+### Example 2: Data Pipeline
+
+```python
+# Multi-step data transformation
+
+# Step 1: Sample and convert to JSON
+await apply_embed_and_create_artifact(
+    output_filename="sampled_data.json",
+    embed_directive="«artifact_content:raw_data.csv>>>sample:1000>>>format:json»",
+    tool_context=context
+)
+
+# Step 2: Further processing
+await apply_embed_and_create_artifact(
+    output_filename="processed_data.json",
+    embed_directive="«artifact_content:sampled_data.json>>>format:json_pretty»",
+    tool_context=context
+)
+```
+
+## See Also
+
+- [Artifact Management](/built-in-tools/artifact-management) - Work with artifacts
+- [apply_embed_and_create_artifact](/built-in-tools/artifact-management#tool-apply_embed_and_create_artifact) - Apply embeds to create artifacts
+- [Tool Configuration](/api/agent/tools) - Configure embed behavior

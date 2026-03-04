@@ -1,0 +1,519 @@
+---
+title: Docker Deployment
+description: Deploy Solace Agent Mesh using Docker containers
+---
+
+# Docker Deployment
+
+Docker provides an excellent foundation for production deployments by packaging Agent Mesh with all its dependencies into portable containers. This approach ensures consistent behavior across different environments and simplifies deployment processes.
+
+## Prerequisites
+
+Before deploying with Docker, ensure you have:
+
+- Docker Engine 20.10+ installed
+- Docker Compose 2.0+ (optional, for multi-container setups)
+- Access to required external services:
+  - Solace event broker (Cloud or self-hosted)
+  - LLM provider endpoints
+  - PostgreSQL database (for production)
+  - S3-compatible object storage (for production)
+- Container registry credentials (if using private images)
+
+## Official Docker Image
+
+Solace Agent Mesh provides official Docker images hosted on Docker Hub and Amazon ECR:
+
+```bash
+# Docker Hub
+solace/solace-agent-mesh:latest
+solace/solace-agent-mesh:<version>
+
+# Amazon ECR (for AWS deployments)
+<ecr-registry>/solace-agent-mesh:latest
+```
+
+### Image Architecture
+
+The official images support multi-architecture deployments:
+
+- **linux/amd64** - x86_64 processors (Intel/AMD)
+- **linux/arm64** - ARM processors (AWS Graviton, Apple Silicon)
+
+<Note>
+  If your host system architecture is not `linux/amd64`, add the `--platform linux/amd64` flag when running the container to ensure compatibility.
+</Note>
+
+### Image Contents
+
+The Docker image includes:
+
+- **Python 3.13** runtime environment
+- **Node.js 25** for UI components
+- **Solace Agent Mesh** installed via pip
+- **System dependencies**: ffmpeg, git, playwright browsers
+- **Pre-built UIs**: Config Portal, Web UI, Documentation
+- **Preset agents**: Basic agent configurations in `/preset/agents`
+
+## Basic Docker Deployment
+
+### Quick Start
+
+Run Agent Mesh with preset agents using environment variables:
+
+```bash
+docker run -d \
+  --name solace-agent-mesh \
+  -p 5002:5002 \
+  -p 8000:8000 \
+  -e SOLACE_BROKER_URL="wss://your-broker.messaging.solace.cloud:443" \
+  -e SOLACE_BROKER_USERNAME="your-username" \
+  -e SOLACE_BROKER_PASSWORD="your-password" \
+  -e SOLACE_BROKER_VPN="your-vpn" \
+  -e LLM_SERVICE_ENDPOINT="https://api.openai.com/v1" \
+  -e LLM_SERVICE_API_KEY="sk-..." \
+  -e LLM_SERVICE_PLANNING_MODEL_NAME="openai/gpt-4" \
+  -e LLM_SERVICE_GENERAL_MODEL_NAME="openai/gpt-4" \
+  -e SESSION_SECRET_KEY="your-random-secret-key" \
+  solace/solace-agent-mesh:latest
+```
+
+**Exposed Ports:**
+- **5002** - Config Portal / Web UI
+- **8000** - Agent Mesh API / Gateway
+
+### Using Environment Files
+
+For cleaner deployments, use an environment file:
+
+```bash
+# Create .env file
+cat > .env << 'EOF'
+SOLACE_BROKER_URL=wss://your-broker.messaging.solace.cloud:443
+SOLACE_BROKER_USERNAME=your-username
+SOLACE_BROKER_PASSWORD=your-password
+SOLACE_BROKER_VPN=your-vpn
+LLM_SERVICE_ENDPOINT=https://api.openai.com/v1
+LLM_SERVICE_API_KEY=sk-...
+LLM_SERVICE_PLANNING_MODEL_NAME=openai/gpt-4
+LLM_SERVICE_GENERAL_MODEL_NAME=openai/gpt-4
+SESSION_SECRET_KEY=your-random-secret-key
+USE_TEMPORARY_QUEUES=false
+EOF
+
+# Run with environment file
+docker run -d \
+  --name solace-agent-mesh \
+  --env-file .env \
+  -p 5002:5002 \
+  -p 8000:8000 \
+  solace/solace-agent-mesh:latest
+```
+
+<Warning>
+  Never commit `.env` files containing secrets to version control. Use `.gitignore` to exclude them.
+</Warning>
+
+## Custom Docker Image
+
+### Creating a Dockerfile
+
+Build a custom image that includes your agents and configuration:
+
+```Dockerfile
+FROM solace/solace-agent-mesh:latest
+
+WORKDIR /app
+
+# Copy Python dependencies (if any)
+COPY requirements.txt /app/
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
+
+# Copy project files
+COPY configs/ /app/configs/
+COPY agents/ /app/agents/
+COPY shared_config.yaml /app/
+
+# Set the default command to run all agents
+CMD ["run", "--system-env"]
+
+# Alternative: Run specific agents
+# CMD ["run", "--system-env", "configs/agents/main_orchestrator.yaml"]
+```
+
+### Optimizing with .dockerignore
+
+Create a `.dockerignore` file to exclude unnecessary files:
+
+```
+.env
+.env.*
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+node_modules/
+README.md
+docs/
+tests/
+```
+
+### Building the Image
+
+```bash
+# Build with tag
+docker build -t my-agent-mesh:1.0.0 .
+
+# Build with build arguments
+docker build \
+  --build-arg VERSION=1.0.0 \
+  -t my-agent-mesh:1.0.0 .
+
+# Multi-platform build
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t my-agent-mesh:1.0.0 \
+  --push .
+```
+
+## Docker Compose Deployment
+
+Use Docker Compose for multi-container deployments with external dependencies:
+
+```yaml
+version: '3.8'
+
+services:
+  # PostgreSQL database for session storage
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sam
+      POSTGRES_USER: sam
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sam"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO for S3-compatible object storage (dev/test)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Solace Agent Mesh
+  agent-mesh:
+    image: solace/solace-agent-mesh:latest
+    ports:
+      - "5002:5002"
+      - "8000:8000"
+      - "8080:8080"  # Health check port
+    environment:
+      # Solace Event Broker
+      SOLACE_BROKER_URL: ${SOLACE_BROKER_URL}
+      SOLACE_BROKER_USERNAME: ${SOLACE_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD: ${SOLACE_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN: ${SOLACE_BROKER_VPN}
+      USE_TEMPORARY_QUEUES: "false"
+      
+      # LLM Configuration
+      LLM_SERVICE_ENDPOINT: ${LLM_SERVICE_ENDPOINT}
+      LLM_SERVICE_API_KEY: ${LLM_SERVICE_API_KEY}
+      LLM_SERVICE_PLANNING_MODEL_NAME: ${LLM_SERVICE_PLANNING_MODEL_NAME}
+      LLM_SERVICE_GENERAL_MODEL_NAME: ${LLM_SERVICE_GENERAL_MODEL_NAME}
+      
+      # Security
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY}
+      
+      # Database (PostgreSQL)
+      DATABASE_URL: postgresql://sam:${DB_PASSWORD}@postgres:5432/sam
+      
+      # Object Storage (MinIO)
+      ARTIFACT_STORAGE_TYPE: s3
+      ARTIFACT_STORAGE_S3_BUCKET: agent-mesh-artifacts
+      ARTIFACT_STORAGE_S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      
+      # Platform Configuration
+      CONFIG_PORTAL_HOST: 0.0.0.0
+      FASTAPI_HOST: 0.0.0.0
+      FASTAPI_PORT: "8000"
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
+```
+
+### Running with Docker Compose
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f agent-mesh
+
+# Check service status
+docker-compose ps
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (deletes data)
+docker-compose down -v
+```
+
+## Microservices Architecture
+
+Deploy components separately for independent scaling:
+
+### Separating Core and Agents
+
+```yaml
+version: '3.8'
+
+services:
+  # Core platform and orchestrator
+  core:
+    image: solace/solace-agent-mesh:latest
+    command: ["run", "--system-env", "configs/core.yaml"]
+    environment:
+      # ... shared environment variables ...
+    volumes:
+      - shared-storage:/app/data
+      - ./configs:/app/configs
+
+  # Specialized agent - can scale independently
+  database-agent:
+    image: solace/solace-agent-mesh:latest
+    command: ["run", "--system-env", "configs/agents/database_agent.yaml"]
+    environment:
+      # ... shared environment variables ...
+    volumes:
+      - shared-storage:/app/data
+      - ./configs:/app/configs
+    deploy:
+      replicas: 3  # Scale this agent independently
+
+  # Another specialized agent
+  multimodal-agent:
+    image: solace/solace-agent-mesh:latest
+    command: ["run", "--system-env", "configs/agents/multimodal_agent.yaml"]
+    environment:
+      # ... shared environment variables ...
+    volumes:
+      - shared-storage:/app/data
+      - ./configs:/app/configs
+
+volumes:
+  shared-storage:
+```
+
+<Warning>
+  When deploying multiple containers, ensure all instances access the same storage with identical configurations. Use Docker volumes or external storage services.
+</Warning>
+
+## Production Considerations
+
+### Resource Limits
+
+Define resource constraints for stability:
+
+```yaml
+services:
+  agent-mesh:
+    # ... other config ...
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+```
+
+### Logging Configuration
+
+Configure Docker logging drivers:
+
+```yaml
+services:
+  agent-mesh:
+    # ... other config ...
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+```
+
+Or use external logging:
+
+```yaml
+logging:
+  driver: "syslog"
+  options:
+    syslog-address: "tcp://logs.example.com:514"
+    tag: "agent-mesh"
+```
+
+### Health Checks
+
+Implement health checks for automatic recovery:
+
+```yaml
+services:
+  agent-mesh:
+    # ... other config ...
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+```
+
+### Secrets Management
+
+**For development**, use environment files:
+
+```bash
+docker run --env-file .env solace/solace-agent-mesh:latest
+```
+
+**For production**, use Docker secrets:
+
+```yaml
+secrets:
+  llm_api_key:
+    external: true
+  db_password:
+    external: true
+
+services:
+  agent-mesh:
+    secrets:
+      - llm_api_key
+      - db_password
+    environment:
+      LLM_SERVICE_API_KEY_FILE: /run/secrets/llm_api_key
+      DB_PASSWORD_FILE: /run/secrets/db_password
+```
+
+### External Database and Storage
+
+For production, use managed services:
+
+```bash
+docker run -d \
+  -e DATABASE_URL="postgresql://user:pass@rds.amazonaws.com:5432/sam" \
+  -e ARTIFACT_STORAGE_TYPE="s3" \
+  -e ARTIFACT_STORAGE_S3_BUCKET="my-bucket" \
+  -e ARTIFACT_STORAGE_S3_REGION="us-east-1" \
+  -e AWS_ACCESS_KEY_ID="..." \
+  -e AWS_SECRET_ACCESS_KEY="..." \
+  solace/solace-agent-mesh:latest
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+```bash
+# Check container logs
+docker logs solace-agent-mesh
+
+# Check container status
+docker ps -a
+
+# Inspect container configuration
+docker inspect solace-agent-mesh
+```
+
+### Permission Issues
+
+The container runs as non-root user (UID 999):
+
+```bash
+# Fix volume permissions
+sudo chown -R 999:999 /path/to/volume
+```
+
+### Network Connectivity
+
+```bash
+# Test from inside container
+docker exec -it solace-agent-mesh bash
+curl -v https://api.openai.com/v1/models
+```
+
+### Health Check Failures
+
+```bash
+# Check health status
+docker inspect --format='{{json .State.Health}}' solace-agent-mesh | jq
+
+# View health check logs
+docker inspect solace-agent-mesh | jq '.[0].State.Health.Log'
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Best Practices" icon="shield-check" href="/deployment/production-best-practices">
+    Learn security, monitoring, and operational best practices
+  </Card>
+  <Card title="Kubernetes Deployment" icon="kubernetes" href="/deployment/kubernetes">
+    Scale to Kubernetes for production-grade infrastructure
+  </Card>
+</CardGroup>
+
+## Related Documentation
+
+- [Deployment Overview](/deployment/overview) - Compare deployment options
+- [Health Checks](/deployment/production-best-practices#monitoring) - Configure health monitoring
+- [Logging](/deployment/production-best-practices#monitoring) - Application logging configuration
+- [Configuration Reference](/installation-and-configuration/configuration) - All configuration options

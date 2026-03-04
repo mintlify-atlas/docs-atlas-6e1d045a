@@ -1,0 +1,267 @@
+---
+title: Deployment Overview
+description: Understanding deployment strategies and options for Solace Agent Mesh
+---
+
+# Deployment Overview
+
+Solace Agent Mesh offers flexible deployment options designed to meet different operational requirements, from local development to production-grade infrastructure. Understanding these options helps you choose the right approach for your specific environment and scale needs.
+
+## Deployment Strategies
+
+Agent Mesh supports multiple deployment strategies, each optimized for different use cases:
+
+### Development Deployment
+
+During development, simplicity and rapid iteration are key priorities. The Agent Mesh CLI provides a streamlined way to run your entire project as a single application, making it easy to test changes and debug issues locally.
+
+**Run your entire project:**
+
+```bash
+sam run
+```
+
+This command starts all configured components together, providing immediate feedback and allowing you to see how different agents interact within your mesh.
+
+**Run specific components:**
+
+```bash
+# Single agent or workflow
+sam run <agent or workflow config file path>
+
+# Multiple components together
+sam run <agent config file path> <workflow config file path>
+```
+
+The development setup automatically loads environment variables from your configuration file (typically a `.env` file at the project root), eliminating the need for complex environment management.
+
+### Production Deployment
+
+Production deployments require different considerations than development environments. You need:
+
+- **Reproducible builds** - Consistent runtime environments across deployments
+- **Scalable infrastructure** - Ability to handle varying loads
+- **Robust monitoring** - Comprehensive observability and health checks
+- **High availability** - Fault tolerance and automatic recovery
+- **Security** - Proper secrets management and encrypted communication
+
+We recommend containerization for production deployments:
+
+- **Docker** - For single-node deployments or simpler orchestration needs
+- **Kubernetes** - For multi-node, scalable, highly available deployments
+
+## Deployment Architecture Patterns
+
+### Monolithic Deployment
+
+Deploy all Agent Mesh components as a single container or process. This approach:
+
+- Simplifies initial deployment and management
+- Reduces operational complexity
+- Works well for smaller deployments or testing
+- Limits independent scaling of components
+
+**Example Docker command:**
+
+```Dockerfile
+FROM solace/solace-agent-mesh:latest
+WORKDIR /app
+COPY . /app
+CMD ["run", "--system-env"]
+```
+
+### Microservices Deployment
+
+Deploy components as separate containers that communicate through the Solace event broker. This approach:
+
+- Enables independent scaling of components
+- Provides better fault isolation
+- Allows granular resource management
+- Supports rolling updates per component
+- Increases operational complexity
+
+**Key considerations:**
+
+- Reuse the same Docker image across components
+- Customize startup commands per deployment
+- Ensure shared storage configuration is identical
+- Configure health checks for each component
+
+### Hybrid Deployment
+
+Combine monolithic and microservices patterns by grouping related agents together while separating high-traffic or resource-intensive components:
+
+- Core platform and orchestrator in one deployment
+- Specialized agents in separate deployments
+- Gateways as independent services
+
+## Infrastructure Requirements
+
+### Compute Resources
+
+Minimum requirements vary based on deployment size:
+
+**Development:**
+- 2 CPU cores
+- 4 GB RAM
+- 10 GB storage
+
+**Production (per node):**
+- 4+ CPU cores (ARM64 or x86_64)
+- 16+ GB RAM
+- 50+ GB SSD storage
+- Additional capacity per concurrent agent (~625 MiB RAM, 175m CPU)
+
+### Persistence Layer
+
+**Database (Required):**
+- PostgreSQL 17+ for session storage
+- Managed services recommended for production (AWS RDS, Azure Database, Cloud SQL)
+- SQLite acceptable for development only
+
+**Object Storage (Required):**
+- S3-compatible API for artifact storage
+- Supported services: AWS S3, Azure Blob Storage, Google Cloud Storage, MinIO
+- Filesystem storage acceptable for development only
+
+### Network Connectivity
+
+**Outbound (Required):**
+- Solace event broker (Cloud or self-hosted)
+- LLM provider endpoints (OpenAI, Anthropic, Azure OpenAI, etc.)
+- Container registry access
+- Identity provider (IdP) for authentication
+
+**Inbound (For web access):**
+- HTTPS/443 for web UI and API
+- TLS termination recommended at ingress layer
+
+## Deployment Options Comparison
+
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>Docker</th>
+      <th>Kubernetes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Setup Complexity</td>
+      <td>Low</td>
+      <td>Medium to High</td>
+    </tr>
+    <tr>
+      <td>Scaling</td>
+      <td>Manual</td>
+      <td>Automatic (HPA)</td>
+    </tr>
+    <tr>
+      <td>High Availability</td>
+      <td>Requires external orchestration</td>
+      <td>Built-in</td>
+    </tr>
+    <tr>
+      <td>Rolling Updates</td>
+      <td>Manual process</td>
+      <td>Native support</td>
+    </tr>
+    <tr>
+      <td>Health Monitoring</td>
+      <td>External tools needed</td>
+      <td>Native probes</td>
+    </tr>
+    <tr>
+      <td>Secrets Management</td>
+      <td>Environment variables</td>
+      <td>Kubernetes Secrets</td>
+    </tr>
+    <tr>
+      <td>Best For</td>
+      <td>Small deployments, single node</td>
+      <td>Production, multi-node, enterprise</td>
+    </tr>
+  </tbody>
+</table>
+
+## Core Components
+
+Understand what gets deployed in a typical Agent Mesh installation:
+
+**Platform Services:**
+- **Agent Mesh Core** - Central orchestration and configuration management (175m CPU / 625 MiB RAM)
+- **Deployer** - Dynamic agent and gateway deployment (100m CPU / 100 MiB RAM)
+- **Web UI Gateway** - User interface and API endpoints (included in core)
+
+**Agents:**
+- **Main Orchestrator** - Routes requests and coordinates agent interactions
+- **Specialized Agents** - Custom or pre-built agents for specific tasks
+- Each agent: ~175m CPU / 625 MiB RAM
+
+**Optional Components:**
+- **Additional Gateways** - REST API, WebSocket, or custom integrations
+- **Workflows** - Declarative multi-step automation
+- **Custom Agents** - Your own agent implementations
+
+## Environment Configuration
+
+All deployment methods use environment variables for configuration. Key variables include:
+
+```bash
+# Required - Solace Event Broker
+SOLACE_BROKER_URL="wss://your-broker.messaging.solace.cloud:443"
+SOLACE_BROKER_USERNAME="your-username"
+SOLACE_BROKER_PASSWORD="your-password"
+SOLACE_BROKER_VPN="your-vpn"
+
+# Required - LLM Configuration
+LLM_SERVICE_ENDPOINT="https://api.openai.com/v1"
+LLM_SERVICE_API_KEY="sk-..."
+LLM_SERVICE_PLANNING_MODEL_NAME="openai/gpt-4"
+LLM_SERVICE_GENERAL_MODEL_NAME="openai/gpt-4"
+
+# Required - Security
+SESSION_SECRET_KEY="your-random-secret-key"
+
+# Production - Database
+DATABASE_URL="postgresql://user:password@host:5432/sam"
+
+# Production - Object Storage
+ARTIFACT_STORAGE_TYPE="s3"
+ARTIFACT_STORAGE_S3_BUCKET="your-bucket-name"
+ARTIFACT_STORAGE_S3_REGION="us-east-1"
+AWS_ACCESS_KEY_ID="your-access-key"
+AWS_SECRET_ACCESS_KEY="your-secret-key"
+
+# Production - Queue Configuration
+USE_TEMPORARY_QUEUES="false"
+
+# Optional - Web UI Configuration
+CONFIG_PORTAL_HOST="0.0.0.0"
+FASTAPI_HOST="0.0.0.0"
+FASTAPI_PORT="8000"
+```
+
+## Next Steps
+
+Choose your deployment method:
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy Agent Mesh using Docker containers for single-node or simple orchestration scenarios
+  </Card>
+  <Card title="Kubernetes Deployment" icon="kubernetes" href="/deployment/kubernetes">
+    Deploy Agent Mesh on Kubernetes for production-grade, scalable infrastructure
+  </Card>
+  <Card title="Production Best Practices" icon="shield-check" href="/deployment/production-best-practices">
+    Learn security, monitoring, and operational best practices for production deployments
+  </Card>
+</CardGroup>
+
+## Related Documentation
+
+- [Health Checks](/deployment/production-best-practices#monitoring) - Configure health monitoring
+- [Logging Configuration](/deployment/production-best-practices#monitoring) - Set up application logging
+- [Monitoring](/deployment/production-best-practices#monitoring) - Observability and monitoring tools
+- [Configuration Reference](/installation-and-configuration/configuration) - Complete configuration options

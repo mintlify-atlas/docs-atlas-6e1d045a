@@ -1,0 +1,466 @@
+---
+title: Image Tools
+description: Tools for image generation, editing, and analysis using AI models
+---
+
+Image tools enable agents to generate images from text descriptions, edit existing images, and analyze visual content using state-of-the-art AI models.
+
+## Tool: generate_image_with_gemini
+
+Generates images from text descriptions using Google's Gemini image generation models.
+
+### Parameters
+
+<ParamField path="image_description" type="string" required>
+  The textual prompt for image generation. Be specific and descriptive.
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the output PNG image. Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="use_pro_model" type="boolean" default={false}>
+  Set to `true` to use the pro model for:
+  - Professional quality output
+  - Advanced reasoning
+  - High-fidelity text rendering
+  - Up to 4K resolution
+  
+  **Note**: Pro model is MORE EXPENSIVE. Only use for complex tasks like infographics, charts, diagrams, or images requiring precise text placement.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.image_tools import generate_image_with_gemini
+
+# Standard model (fast, efficient, cheaper)
+result = await generate_image_with_gemini(
+    image_description="A serene mountain landscape at sunset with vibrant orange and purple sky",
+    output_filename="sunset_landscape",
+    use_pro_model=False,
+    tool_context=context,
+    tool_config={
+        "gemini_api_key": "your-api-key",
+        "model": "gemini-3.1-flash-image-preview",  # Standard model
+        "pro_model": "gemini-3-pro-image-preview"    # Pro model
+    }
+)
+
+if result.status == "success":
+    print(f"Image created: {result.output_filename}")
+    print(f"Version: {result.output_version}")
+    print(f"Model used: {result.model_used}")
+```
+
+### Pro Model Example (Complex Graphics)
+
+```python
+# Use pro model for complex infographic with text
+result = await generate_image_with_gemini(
+    image_description="""
+    Create a professional infographic showing 'Q1 2024 Sales Performance'.
+    Include:
+    - Title at top in bold blue text
+    - Three sections with icons: Revenue ($2.5M), Growth (+15%), Customers (1,200)
+    - Bar chart showing monthly progression Jan-Mar
+    - Clean white background with blue and green accents
+    """,
+    output_filename="q1_infographic",
+    use_pro_model=True,  # Use pro model for text rendering and complex layout
+    tool_context=context,
+    tool_config={"gemini_api_key": "your-key"}
+)
+```
+
+### Model Selection Guide
+
+<AccordionGroup>
+  <Accordion title="Standard Model (Default)">
+    **Best for**:
+    - General images and illustrations
+    - Photographs and landscapes
+    - Artistic content
+    - Quick iterations
+    
+    **Characteristics**:
+    - Fast generation
+    - Lower cost
+    - Good quality for most use cases
+  </Accordion>
+
+  <Accordion title="Pro Model">
+    **Best for**:
+    - Infographics with text
+    - Charts and diagrams
+    - Technical illustrations
+    - Marketing materials
+    - Images requiring precise text placement
+    
+    **Characteristics**:
+    - Professional quality
+    - High-fidelity text rendering
+    - Up to 4K resolution
+    - Advanced reasoning
+    - Higher cost
+  </Accordion>
+</AccordionGroup>
+
+## Tool: edit_image_with_gemini
+
+Edits existing images based on text prompts using Gemini's image generation models.
+
+### Parameters
+
+<ParamField path="input_image" type="Artifact" required>
+  The input image artifact (pre-loaded by framework). Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`.
+</ParamField>
+
+<ParamField path="edit_prompt" type="string" required>
+  Text description of the desired edits to apply.
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the edited image. Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="use_pro_model" type="boolean" default={false}>
+  Set to `true` for professional quality edits. See model selection guide above.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.image_tools import edit_image_with_gemini
+
+# Edit existing image
+result = await edit_image_with_gemini(
+    input_image="landscape.jpg",  # Artifact filename
+    edit_prompt="Add a rainbow in the sky and make the colors more vibrant",
+    output_filename="landscape_with_rainbow",
+    use_pro_model=False,
+    tool_context=context,
+    tool_config={"gemini_api_key": "your-key"}
+)
+
+if result.status == "success":
+    edited_image = result.data_objects[0]
+    print(f"Edited image: {edited_image.name}")
+```
+
+### Complex Edit Example
+
+```python
+# Professional edit with text overlay
+result = await edit_image_with_gemini(
+    input_image="product_photo.jpg",
+    edit_prompt="""
+    Add professional product labels:
+    - '50% OFF' in red banner at top right
+    - 'Limited Time Only' text at bottom
+    - Enhance product colors to make them pop
+    - Add subtle drop shadow to text
+    """,
+    use_pro_model=True,  # Use pro for text rendering
+    tool_context=context,
+    tool_config={"gemini_api_key": "your-key"}
+)
+```
+
+## Tool: create_image_from_description
+
+Generates images using OpenAI-compatible APIs (DALL-E, Stable Diffusion, etc.).
+
+### Parameters
+
+<ParamField path="image_description" type="string" required>
+  The textual prompt for image generation.
+</ParamField>
+
+<ParamField path="output_filename" type="string" default={null}>
+  Optional filename for the output PNG image.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.image_tools import create_image_from_description
+
+# Generate image using DALL-E
+result = await create_image_from_description(
+    image_description="A futuristic cityscape with flying cars and neon lights",
+    output_filename="futuristic_city",
+    tool_context=context,
+    tool_config={
+        "model": "dall-e-3",
+        "api_key": "your-openai-key",
+        "api_base": "https://api.openai.com",
+        "extra_params": {
+            "quality": "hd",
+            "size": "1024x1024"
+        }
+    }
+)
+```
+
+## Tool: describe_image
+
+Analyzes and describes images using OpenAI-compatible vision APIs.
+
+### Parameters
+
+<ParamField path="input_image" type="Artifact" required>
+  The input image artifact to analyze.
+</ParamField>
+
+<ParamField path="prompt" type="string" default="What is in this image?">
+  Custom prompt for image analysis.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.image_tools import describe_image
+
+# Analyze image content
+result = await describe_image(
+    input_image="chart.png",
+    prompt="Describe the data trends shown in this chart in detail",
+    tool_context=context,
+    tool_config={
+        "model": "gpt-4o",
+        "api_key": "your-openai-key",
+        "api_base": "https://api.openai.com"
+    }
+)
+
+if result.status == "success":
+    description = result.data["description"]
+    print(f"Image analysis: {description}")
+```
+
+### Advanced Analysis Example
+
+```python
+# Detailed chart analysis
+result = await describe_image(
+    input_image="sales_chart.png",
+    prompt="""
+    Analyze this sales chart and provide:
+    1. Overall trend direction
+    2. Key data points and values
+    3. Notable patterns or anomalies
+    4. Business insights and recommendations
+    """,
+    tool_context=context,
+    tool_config={"model": "gpt-4o", "api_key": "your-key"}
+)
+```
+
+## Tool: describe_audio
+
+Analyzes audio recordings using multimodal APIs.
+
+### Parameters
+
+<ParamField path="input_audio" type="Artifact" required>
+  The input audio artifact. Supports `.wav` and `.mp3` formats.
+</ParamField>
+
+<ParamField path="prompt" type="string" default="What is in this recording?">
+  Custom prompt for audio analysis.
+</ParamField>
+
+### Usage Example
+
+```python
+from solace_agent_mesh.agent.tools.image_tools import describe_audio
+
+# Analyze audio content
+result = await describe_audio(
+    input_audio="meeting.mp3",
+    prompt="Summarize the key discussion points and decisions made in this meeting",
+    tool_context=context,
+    tool_config={
+        "model": "gpt-4o-audio-preview",
+        "api_key": "your-openai-key",
+        "api_base": "https://api.openai.com"
+    }
+)
+
+if result.status == "success":
+    analysis = result.data["description"]
+    print(f"Audio analysis: {analysis}")
+```
+
+## Configuration Examples
+
+### Gemini Configuration
+
+```yaml
+builtin_tools:
+  - name: generate_image_with_gemini
+    config:
+      gemini_api_key: ${GEMINI_API_KEY}
+      model: gemini-3.1-flash-image-preview  # Standard model
+      pro_model: gemini-3-pro-image-preview   # Pro model
+  
+  - name: edit_image_with_gemini
+    config:
+      gemini_api_key: ${GEMINI_API_KEY}
+      model: gemini-3.1-flash-image-preview
+      pro_model: gemini-3-pro-image-preview
+```
+
+### OpenAI Configuration
+
+```yaml
+builtin_tools:
+  - name: create_image_from_description
+    config:
+      model: dall-e-3
+      api_key: ${OPENAI_API_KEY}
+      api_base: https://api.openai.com
+      extra_params:
+        quality: hd
+        size: 1024x1024
+        style: vivid
+  
+  - name: describe_image
+    config:
+      model: gpt-4o
+      api_key: ${OPENAI_API_KEY}
+      api_base: https://api.openai.com
+```
+
+### Stable Diffusion Configuration
+
+```yaml
+builtin_tools:
+  - name: create_image_from_description
+    config:
+      model: stable-diffusion-xl
+      api_key: ${REPLICATE_API_KEY}
+      api_base: https://api.replicate.com
+      extra_params:
+        num_inference_steps: 50
+        guidance_scale: 7.5
+```
+
+## Response Formats
+
+### Image Generation Response
+
+```json
+{
+  "status": "success",
+  "message": "Image generated successfully.",
+  "data_objects": [
+    {
+      "name": "landscape.png",
+      "mime_type": "image/png",
+      "disposition": "artifact",
+      "description": "Image generated from prompt: A serene mountain...",
+      "metadata": {
+        "source_prompt": "A serene mountain landscape...",
+        "generation_tool": "gemini",
+        "generation_model": "gemini-3.1-flash-image-preview",
+        "used_pro_model": false
+      }
+    }
+  ]
+}
+```
+
+### Image Analysis Response
+
+```json
+{
+  "status": "success",
+  "message": "Image described successfully",
+  "data": {
+    "description": "The image shows a bar chart with quarterly sales data...",
+    "image_filename": "chart.png",
+    "image_version": 0,
+    "tokens_used": {
+      "prompt_tokens": 1250,
+      "completion_tokens": 320
+    }
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Prompt Engineering">
+    **For Better Results**:
+    - Be specific and detailed in descriptions
+    - Include style, mood, colors, composition
+    - Mention specific objects and their positions
+    - Specify lighting and atmosphere
+    
+    ```python
+    # Good
+    "A professional product photo of a red sports car on a white background, 
+    studio lighting, high detail, 4K quality, centered composition"
+    
+    # Less effective
+    "A red car"
+    ```
+  </Accordion>
+
+  <Accordion title="Model Selection">
+    - Use **standard model** for general purposes (faster, cheaper)
+    - Use **pro model** only when you need:
+      - Text in images (infographics, labels)
+      - Complex layouts (charts, diagrams)
+      - Professional quality output
+  </Accordion>
+
+  <Accordion title="Image Editing">
+    - Start with clear, high-quality input images
+    - Be specific about what changes you want
+    - Use pro model for text-based edits
+    - Test edits iteratively for complex changes
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+```python
+result = await generate_image_with_gemini(
+    image_description=prompt,
+    tool_context=context
+)
+
+if result.status == "error":
+    error_msg = result.message
+    
+    if "api_key" in error_msg.lower():
+        print("API key not configured")
+    elif "quota" in error_msg.lower():
+        print("API quota exceeded")
+    elif "content policy" in error_msg.lower():
+        print("Prompt violates content policy")
+    else:
+        print(f"Error: {error_msg}")
+```
+
+## Supported Image Formats
+
+### Input Formats (for editing/analysis)
+- PNG (`.png`)
+- JPEG (`.jpg`, `.jpeg`)
+- WebP (`.webp`)
+- GIF (`.gif`)
+
+### Output Formats
+- PNG (default for Gemini)
+- JPEG (for edited images)
+
+## See Also
+
+- [Audio Tools](/built-in-tools/audio-tools) - Generate and process audio
+- [Data Analysis Tools](/built-in-tools/data-analysis) - Create data visualizations
+- [Artifact Management](/built-in-tools/artifact-management) - Manage image artifacts

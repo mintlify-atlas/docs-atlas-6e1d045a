@@ -1,0 +1,197 @@
+---
+title: Introduction to Solace Agent Mesh
+description: An open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks.
+---
+
+# Introduction to Solace Agent Mesh
+
+Solace Agent Mesh is an open-source framework for building AI applications where multiple specialized AI agents work together to solve complex problems. It uses the event messaging of [Solace Platform](https://solace.com) for true scalability and reliability.
+
+<Note>
+Built on Solace's proven event-driven architecture and integrated with Google Agent Development Kit (ADK), Agent Mesh brings together specialized agents and helps them collaborate using standardized Agent-to-Agent (A2A) communication.
+</Note>
+
+## What is Solace Agent Mesh?
+
+Modern AI development faces a fundamental challenge: powerful AI models are readily available, but it's complicated to connect them to the data and systems where they can provide value. Agent Mesh tackles this challenge by providing an excellent integration layer that enables specialized agents to collaborate seamlessly.
+
+<CardGroup cols={2}>
+  <Card title="Event-Driven Architecture" icon="bolt">
+    All interactions between components are asynchronous and mediated by the Solace event broker, eliminating direct dependencies and enabling independent scaling.
+  </Card>
+  <Card title="Multi-Agent Collaboration" icon="users">
+    Create teams of AI agents with distinct skills and access to specific tools, enabling them to work together on complex tasks.
+  </Card>
+  <Card title="Flexible Interfaces" icon="window">
+    Integrate with REST API, web UI, Slack, or build your own integration through purpose-built gateways.
+  </Card>
+  <Card title="Production Ready" icon="shield-check">
+    Built on Solace Event Broker for high-throughput, fault-tolerant messaging that scales with your needs.
+  </Card>
+</CardGroup>
+
+## Key Benefits
+
+### Unified AI Collaboration
+
+Agent Mesh breaks down AI silos by enabling specialized agents to operate independently yet collaborate effortlessly. The framework blends:
+
+- Diverse AI models from any major provider
+- Custom tools (Python functions and MCP tools)
+- Enterprise data sources into a cohesive ecosystem
+
+### Complex Workflow Orchestration
+
+Create sophisticated multi-agent processes where tasks flow naturally between specialists, executing in sequence or parallel based on dynamic needs through standardized A2A communication.
+
+### Exponential Capability Growth
+
+Each new agent enhances all other agents through collaboration, creating exponential rather than additive capability increases. Each new gateway opens entirely new use cases for the system.
+
+### Developer-Friendly Design
+
+<Info>
+YAML-based configuration provides precise control without code changes. Modular components can be reused, replaced, or enhanced independently with built-in security and authorization frameworks.
+</Info>
+
+Key developer advantages:
+
+- **Complete Observability**: All communication flows through the event broker for real-time monitoring and debugging
+- **Flexible Integration**: Built-in support for common enterprise systems and AI frameworks
+- **Plugin Architecture**: Easily extend the system with custom agents and gateways
+- **Comprehensive CLI**: Full-featured command-line tools for project management
+
+## Core Architecture Components
+
+Agent Mesh integrates three primary technologies:
+
+<CardGroup cols={3}>
+  <Card title="Solace Event Broker" icon="network-wired">
+    Provides the messaging fabric for all asynchronous communication using topic-based routing for the A2A protocol.
+  </Card>
+  <Card title="Solace AI Connector (SAC)" icon="plug">
+    Serves as the runtime environment for hosting and managing the lifecycle of all system components.
+  </Card>
+  <Card title="Google ADK" icon="brain">
+    Provides the core logic for individual agents, including LLM interaction, tool execution, and state management.
+  </Card>
+</CardGroup>
+
+### Agent Hosts
+
+An Agent Host is a SAC application that hosts a single ADK-based agent. Each agent is defined by:
+
+- **Instructions**: Define the agent's persona and capabilities
+- **LLM Configuration**: Specify which large language model to use
+- **Toolset**: Built-in tools, custom Python functions, or MCP Toolsets
+
+### Gateways
+
+Gateways are SAC applications that bridge external systems and the agent mesh. They:
+
+- Handle protocol translation (HTTP, WebSockets, Slack, etc. to A2A protocol)
+- Manage authentication and authorization
+- Handle asynchronous responses and status updates from agents
+
+### The A2A Protocol
+
+The Agent-to-Agent (A2A) protocol enables standardized communication:
+
+- Agents can delegate tasks to peer agents
+- Share data and artifacts
+- Connect with diverse user interfaces and external systems
+- Execute multi-step workflows with minimal coupling
+
+## Real-World Applications
+
+Agent Mesh is already solving real problems across industries:
+
+<Tabs>
+  <Tab title="Enterprise Automation">
+    - Customer service systems that route inquiries to specialized agents
+    - Data processing pipelines that transform, analyze, and enrich information from multiple sources
+    - Automated workflow orchestration across multiple business systems
+  </Tab>
+  <Tab title="AI Task Specialization">
+    - Image analysis workflows with visual processing and text generation specialists
+    - Document processing systems that extract, summarize, and translate content
+    - Multi-modal AI systems combining text, image, and audio processing
+  </Tab>
+  <Tab title="Human-AI Collaboration">
+    - Complex task execution that keeps humans in the loop for approvals
+    - Chat interfaces for natural language interaction with AI systems
+    - Real-time collaboration tools with AI assistance
+  </Tab>
+  <Tab title="Data Intelligence">
+    - Agents that query databases and transform results based on natural language
+    - Automated report generation with visualizations
+    - Real-time data analysis and insights delivery
+  </Tab>
+</Tabs>
+
+## Built on Proven Technology
+
+Solace Agent Mesh leverages industry-leading technologies:
+
+- **Solace Platform**: Enterprise-grade event broker with proven reliability
+- **Google ADK**: Advanced agent development capabilities
+- **LiteLLM Integration**: Support for any major LLM provider
+- **Python Ecosystem**: Access to thousands of Python packages and tools
+
+<Warning>
+While Agent Mesh provides a development mode for quick prototyping, production deployments should use a properly configured Solace event broker for reliability and scalability.
+</Warning>
+
+## What You Can Build
+
+With Solace Agent Mesh, you can create:
+
+- **Database Agents**: Query SQL databases and generate insights
+- **Weather Agents**: Access real-time weather information
+- **Research Agents**: Perform deep research across multiple sources
+- **Multimodal Agents**: Process text, images, audio, and generate various content types
+- **Integration Agents**: Connect to APIs, SaaS platforms, and enterprise systems
+- **Custom Agents**: Any specialized functionality you need
+
+## System Requirements
+
+To run Solace Agent Mesh, you'll need:
+
+- **Python 3.10.16+**
+- **pip** (comes with Python)
+- **OS**: MacOS, Linux, or Windows with WSL
+- **LLM API key** from any major provider
+- **Optional**: Docker or Podman for containerized deployments
+
+## Package Information
+
+<CodeGroup>
+```bash PyPI Installation
+pip3 install solace-agent-mesh
+```
+
+```bash Version Check
+sam -v
+# or
+solace-agent-mesh -v
+```
+</CodeGroup>
+
+**Package Name**: `solace-agent-mesh`
+
+**Python Compatibility**: 3.10.16+
+
+**License**: Apache 2.0
+
+## Next Steps
+
+Ready to get started? Continue with the quickstart guide to set up your first Agent Mesh project in just a few minutes.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up your first Agent Mesh project in 5 minutes
+  </Card>
+  <Card title="Architecture Deep Dive" icon="sitemap" href="/architecture">
+    Learn about the event-driven architecture and key components
+  </Card>
+</CardGroup>

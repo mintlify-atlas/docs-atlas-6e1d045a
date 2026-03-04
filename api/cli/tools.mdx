@@ -1,0 +1,385 @@
+---
+title: 'sam tools'
+description: 'Manage and explore SAM built-in tools'
+---
+
+## Overview
+
+The `sam tools` command allows you to explore and discover built-in tools available in Solace Agent Mesh. Tools provide agents with capabilities to perform actions like file operations, data analysis, web interactions, and more.
+
+## Syntax
+
+```bash
+sam tools <SUBCOMMAND> [OPTIONS]
+```
+
+## Description
+
+Built-in tools are pre-packaged capabilities that agents can use during task execution. The tools command provides introspection into:
+
+- Available tool names and descriptions
+- Tool categories and organization
+- Parameter schemas and requirements
+- Required scopes and permissions
+- Usage examples
+
+## Subcommands
+
+### sam tools list
+
+List all built-in tools available in Solace Agent Mesh.
+
+#### Syntax
+
+```bash
+sam tools list [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="-c, --category" type="string">
+  Filter tools by category (e.g., `artifact_management`, `data_analysis`).
+</ParamField>
+
+<ParamField path="-d, --detailed" type="boolean" default="false">
+  Show detailed information including parameters and required scopes.
+</ParamField>
+
+<ParamField path="--json" type="boolean" default="false">
+  Output in JSON format instead of pretty table.
+</ParamField>
+
+#### Examples
+
+**List all tools (brief):**
+
+```bash
+sam tools list
+```
+
+**List with full details:**
+
+```bash
+sam tools list --detailed
+```
+
+**Filter by category:**
+
+```bash
+sam tools list --category artifact_management
+```
+
+**Detailed view with category filter:**
+
+```bash
+sam tools list -c web --detailed
+```
+
+**Output as JSON:**
+
+```bash
+sam tools list --json
+```
+
+**Filter and output as JSON:**
+
+```bash
+sam tools list -c web --json > web_tools.json
+```
+
+#### Output
+
+**Brief format (default):**
+
+```
+═══ Artifact Management ═══
+
+  • create_artifact
+    Creates a new artifact with specified content and metadata.
+
+  • read_artifact
+    Reads an existing artifact by ID and returns its content.
+
+  • list_artifacts
+    Lists all artifacts in the current scope with optional filtering.
+
+  • delete_artifact
+    Deletes an artifact by ID.
+
+═══ Data Analysis ═══
+
+  • analyze_csv
+    Analyzes CSV data and generates statistical summaries.
+
+  • create_chart
+    Creates visualization charts from data.
+
+Total: 6 tools
+```
+
+**Detailed format (`--detailed`):**
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Artifact Management                                      │
+│ Tools for creating, reading, and managing artifacts     │
+╰──────────────────────────────────────────────────────────╯
+
+Tool: create_artifact
+Description: Creates a new artifact with specified content and metadata.
+Parameters:
+  - content (string, required): The content of the artifact
+  - name (string, optional): Name for the artifact
+  - metadata (object, optional): Additional metadata
+Required Scopes: artifact:write
+
+Tool: read_artifact
+Description: Reads an existing artifact by ID and returns its content.
+Parameters:
+  - artifact_id (string, required): ID of the artifact to read
+Required Scopes: artifact:read
+
+...
+
+Total: 6 tools
+```
+
+**JSON format (`--json`):**
+
+```json
+[
+  {
+    "name": "create_artifact",
+    "description": "Creates a new artifact with specified content and metadata.",
+    "category": "artifact_management",
+    "category_name": "Artifact Management",
+    "required_scopes": ["artifact:write"],
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "The content of the artifact"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name for the artifact"
+        }
+      },
+      "required": ["content"]
+    }
+  },
+  ...
+]
+```
+
+**JSON detailed format (`--json --detailed`):**
+
+Includes additional fields:
+- `category_description`
+- `examples`
+- `raw_string_args`
+- Complete parameter schemas
+
+---
+
+## Tool Categories
+
+Built-in tools are organized into categories:
+
+<CardGroup cols={2}>
+  <Card title="Artifact Management" icon="file">
+    Create, read, update, and delete artifacts
+  </Card>
+  
+  <Card title="Data Analysis" icon="chart-line">
+    Analyze data, generate statistics, create visualizations
+  </Card>
+  
+  <Card title="Web Interaction" icon="globe">
+    Fetch web pages, scrape content, make HTTP requests
+  </Card>
+  
+  <Card title="File Operations" icon="folder">
+    Read, write, and manipulate files
+  </Card>
+</CardGroup>
+
+View all categories:
+
+```bash
+sam tools list | grep "═══"
+```
+
+## Tool Registry
+
+Tools are registered in the tool registry at runtime. The registry provides:
+
+- Tool discovery by name or category
+- Parameter validation
+- Scope checking
+- Tool metadata
+
+**Access in Python:**
+
+```python
+from solace_agent_mesh.agent.tools.registry import tool_registry
+
+# Get all tools
+all_tools = tool_registry.get_all_tools()
+
+# Get tools by category
+web_tools = tool_registry.get_tools_by_category('web')
+
+# Get specific tool
+tool = tool_registry.get_tool('create_artifact')
+```
+
+## Using Tools in Agents
+
+Tools are configured in agent YAML files:
+
+```yaml
+components:
+  - component_name: my_agent
+    component_module: solace_agent_mesh.agent.agent
+    component_config:
+      tools:
+        - tool_type: builtin
+          name: create_artifact
+          enabled: true
+        
+        - tool_type: builtin
+          name: analyze_csv
+          enabled: true
+          
+        - tool_type: mcp
+          name: weather
+          connection_params:
+            command: "uvx"
+            args: ["weather-mcp"]
+```
+
+## Tool Scopes
+
+Some tools require specific scopes (permissions):
+
+- `artifact:read` - Read artifacts
+- `artifact:write` - Create/modify artifacts
+- `data:read` - Read data sources
+- `data:write` - Write to data sources
+- `web:fetch` - Fetch web content
+
+Scopes are enforced at runtime based on agent configuration.
+
+## Parameter Schemas
+
+Tool parameters follow JSON Schema format:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "param_name": {
+      "type": "string",
+      "description": "Parameter description"
+    }
+  },
+  "required": ["param_name"]
+}
+```
+
+Parameters can be:
+- **Required**: Must be provided
+- **Optional**: Can be omitted
+- **Typed**: string, number, boolean, object, array
+
+## Filtering Tools
+
+Find tools for specific use cases:
+
+**Artifact-related tools:**
+
+```bash
+sam tools list --category artifact_management
+```
+
+**Data analysis tools:**
+
+```bash
+sam tools list --category data_analysis
+```
+
+**All categories:**
+
+```bash
+# Get list of all category names
+sam tools list --json | jq -r '.[].category' | sort -u
+```
+
+## Tool Information Export
+
+Export tool information for documentation or analysis:
+
+**Export all tools:**
+
+```bash
+sam tools list --json --detailed > all_tools.json
+```
+
+**Export specific category:**
+
+```bash
+sam tools list --category web --json > web_tools.json
+```
+
+**Extract tool names:**
+
+```bash
+sam tools list --json | jq -r '.[].name'
+```
+
+**Count tools by category:**
+
+```bash
+sam tools list --json | jq -r '.[] | .category' | sort | uniq -c
+```
+
+## Implementation Details
+
+Implemented in:
+- Command: `/home/daytona/workspace/source/cli/commands/tools_cmd.py:234-316`
+- Registry: `solace_agent_mesh.agent.tools.registry`
+- Tools module: `solace_agent_mesh.agent.tools`
+
+Key functions:
+- `format_tool_table_brief()` - Brief listing format
+- `format_tool_table()` - Detailed listing format  
+- `tools_to_json()` - JSON export format
+- `format_parameter_schema()` - Parameter formatting
+
+## Exit Codes
+
+- `0`: Success
+- `1`: Error (no tools found, invalid category, etc.)
+
+## Error Handling
+
+**No tools found:**
+
+```
+Error: No tools are registered in the tool registry.
+```
+
+**Invalid category:**
+
+```
+Error: No tools found for category 'invalid_category'.
+Valid categories: artifact_management, data_analysis, web, file_operations
+```
+
+## See Also
+
+- [sam add agent](/api/cli/add) - Create agents that use tools
+- [sam plugin](/api/cli/plugin) - Extend tools with plugins
+- [sam task send](/api/cli/task) - Execute tasks with tools

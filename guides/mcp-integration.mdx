@@ -1,0 +1,608 @@
+---
+title: MCP Integration
+description: Integrate Model Context Protocol (MCP) servers to extend agent capabilities with external tools and data sources
+---
+
+# MCP Integration
+
+This guide shows you how to integrate Model Context Protocol (MCP) servers with Solace Agent Mesh, giving your agents access to powerful external tools and data sources.
+
+## Understanding MCP
+
+MCP (Model Context Protocol) is an open protocol that:
+- Provides a standardized way for AI applications to access tools and data
+- Connects LLMs with external systems like filesystems, databases, and APIs
+- Offers a growing ecosystem of pre-built servers (Slack, GitHub, Google Drive, etc.)
+- Supports both local (stdio) and remote (HTTP/SSE) connections
+
+## MCP Integration Patterns
+
+Solace Agent Mesh supports two ways to use MCP:
+
+1. **MCP Tools in Agents**: Add MCP server tools directly to agents
+2. **MCP Gateway**: Expose SAM agents as MCP tools to external clients
+
+## Adding MCP Tools to Agents
+
+<Steps>
+
+### Step 1: Install MCP Server
+
+Install the MCP server you want to use. For example, the filesystem MCP server:
+
+```bash
+npm install -g @modelcontextprotocol/server-filesystem
+```
+
+<Note>
+Most MCP servers are Node.js packages. Ensure you have Node.js installed.
+</Note>
+
+### Step 2: Configure Agent with MCP Tool
+
+Add the MCP tool to your agent's configuration:
+
+```yaml filesystem_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: filesystem_agent.log
+
+!include shared_config.yaml
+
+apps:
+  - name: filesystem_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "FileSystemAgent"
+      display_name: "File System Manager"
+      model: *planning_model
+      
+      instruction: |
+        You can interact with the local filesystem.
+        Use the available tools to:
+        - List directory contents
+        - Read file contents
+        - Create and edit files
+        - Move and delete files
+        
+        Always confirm actions before making destructive changes.
+      
+      tools:
+        # MCP filesystem server
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "npx"
+            args:
+              - "-y"
+              - "@modelcontextprotocol/server-filesystem"
+              - "/tmp/samv2"  # Directory to expose
+            timeout: 300
+        
+        # Built-in artifact management
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+      
+      agent_card:
+        description: "Manages local filesystem operations"
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "filesystem_ops"
+            name: "Filesystem Operations"
+            description: "Read, write, and manage files and directories"
+            examples:
+              - "List files in the data directory"
+              - "Read the contents of config.json"
+              - "Create a new file called report.txt"
+            tags: ["filesystem", "files"]
+      
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: ["*"]
+        request_timeout_seconds: 60
+```
+
+### Step 3: Test the Integration
+
+Start your agent and test MCP tool usage:
+
+```bash
+sam run configs/agents/filesystem_agent.yaml
+```
+
+Then via a gateway:
+- "List all files in the directory"
+- "Read the contents of test.txt"
+- "Create a new file called hello.txt with the content 'Hello, World!'"
+
+</Steps>
+
+## Common MCP Servers
+
+### Filesystem Server
+
+Access local files and directories:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-filesystem"
+        - "/path/to/directory"
+```
+
+### Playwright Server
+
+Web browsing and automation:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-playwright"
+        - "--headless"
+```
+
+### GitHub Server
+
+GitHub API access:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-github"
+    environment_variables:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+```
+
+### Slack Server
+
+Slack API access:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-slack"
+    environment_variables:
+      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+```
+
+## Remote MCP Servers (SSE)
+
+Connect to remote MCP servers over HTTP with Server-Sent Events:
+
+```yaml web_agent.yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: sse
+      url: "https://api.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${API_TOKEN}"
+      timeout: 300
+```
+
+<Tip>
+Remote MCP servers are useful for accessing cloud services, internal APIs, or sharing MCP servers across multiple agents.
+</Tip>
+
+## Complete Example: Web Research Agent
+
+Here's a complete agent that combines multiple MCP servers for web research:
+
+```yaml web_research_agent.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: web_research_agent.log
+
+!include shared_config.yaml
+
+apps:
+  - name: web_research_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "WebResearchAgent"
+      display_name: "Web Research Specialist"
+      model: *planning_model
+      
+      instruction: |
+        You are a web research specialist with access to web browsing tools.
+        
+        Your capabilities:
+        - Browse websites and extract information
+        - Navigate multi-page workflows
+        - Take screenshots for verification
+        - Save research findings as artifacts
+        
+        Research workflow:
+        1. Navigate to the target website
+        2. Identify and click relevant elements
+        3. Extract the requested information
+        4. Validate findings with screenshots if needed
+        5. Compile results into a structured report
+        6. Save report as an artifact and return to user
+        
+        Always provide status updates during long research tasks.
+        Save all findings and screenshots as artifacts.
+      
+      tools:
+        # Playwright for web browsing
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "npx"
+            args:
+              - "-y"
+              - "@modelcontextprotocol/server-playwright"
+              - "--headless"
+        
+        # Filesystem for saving research
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "npx"
+            args:
+              - "-y"
+              - "@modelcontextprotocol/server-filesystem"
+              - "/tmp/samv2/research"
+        
+        # Built-in tools
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+      
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+      
+      # Enable screenshot processing
+      extract_content_from_artifact_config:
+        supported_binary_mime_types: ["image/png", "image/jpeg"]
+        model: *general_model
+      
+      agent_card:
+        description: |
+          Web research specialist that can browse websites, extract
+          information, and compile research findings into reports.
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "web_research"
+            name: "Web Research"
+            description: "Browse websites and extract information"
+            examples:
+              - "Research the latest pricing on example.com"
+              - "Find contact information for Company X"
+              - "Extract product details from the catalog page"
+            tags: ["research", "web", "scraping"]
+          
+          - id: "competitive_analysis"
+            name: "Competitive Analysis"
+            description: "Compare information across multiple websites"
+            examples:
+              - "Compare pricing across three competitor websites"
+              - "Analyze features of top 5 products in the category"
+            tags: ["analysis", "research"]
+      
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: ["*"]
+        request_timeout_seconds: 180
+```
+
+## Using Specific MCP Tools
+
+If you only want specific tools from an MCP server:
+
+```yaml
+tools:
+  - tool_type: mcp
+    tool_name: "read_file"  # Only expose this one tool
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-filesystem"
+        - "/tmp/samv2"
+```
+
+## MCP Gateway: Expose SAM Agents via MCP
+
+You can also expose your SAM agents as MCP tools to external MCP clients:
+
+<Steps>
+
+### Step 1: Install MCP Gateway Plugin
+
+```bash
+sam plugin install sam-mcp-server-gateway-adapter
+```
+
+### Step 2: Configure MCP Gateway
+
+```yaml mcp_gateway.yaml
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: mcp_gateway.log
+
+!include shared_config.yaml
+
+apps:
+  - name: mcp_gateway_app
+    app_base_path: .
+    app_module: solace_agent_mesh.gateway.generic.app
+    
+    broker:
+      <<: *broker_connection
+    
+    app_config:
+      namespace: ${NAMESPACE}
+      
+      gateway_adapter: sam_mcp_server_gateway_adapter.McpAdapter
+      
+      adapter_config:
+        # MCP server identity
+        mcp_server_name: "SAM MCP Gateway"
+        mcp_server_description: "Access to Solace Agent Mesh agents via MCP"
+        
+        # Transport: "http" or "stdio"
+        transport: http
+        host: "localhost"
+        port: 8090
+        
+        # Authentication
+        default_user_identity: "mcp_user"
+        
+        # Streaming
+        stream_responses: true
+        task_timeout_seconds: 300
+        
+        # File handling
+        inline_image_max_bytes: 5242880      # 5MB
+        inline_text_max_bytes: 1048576       # 1MB
+        enable_artifact_resources: true
+        
+        # Tool filtering (optional)
+        include_tools: []  # Empty = include all
+        exclude_tools:
+          - ".*_debug"  # Exclude debug tools
+      
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: "namespace"
+      
+      default_user_identity: "mcp_user"
+      
+      system_purpose: |
+        Provide access to SAM agents via MCP protocol.
+      
+      response_format: |
+        Responses should be clear and include all relevant artifacts.
+```
+
+### Step 3: Connect MCP Clients
+
+Connect Claude Desktop or other MCP clients:
+
+```json claude_desktop_config.json
+{
+  "mcpServers": {
+    "sam": {
+      "url": "http://localhost:8090/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+Or test with MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector
+# Select "Streamable HTTP" and enter: http://localhost:8090/mcp
+```
+
+</Steps>
+
+## Advanced MCP Configuration
+
+### Environment Variables
+
+Pass environment variables to MCP servers:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "uvx"
+      args:
+        - "mcp-server-jira"
+    environment_variables:
+      JIRA_URL: "${JIRA_URL}"
+      JIRA_USERNAME: "${JIRA_USERNAME}"
+      JIRA_API_TOKEN: "${JIRA_API_TOKEN}"
+```
+
+### Custom Timeouts
+
+Adjust timeouts for slow MCP servers:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "npx"
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-slow-service"
+      timeout: 600  # 10 minutes
+```
+
+### Docker-based MCP Servers
+
+Run MCP servers in Docker containers:
+
+```yaml
+tools:
+  - tool_type: mcp
+    connection_params:
+      type: stdio
+      command: "docker"
+      args:
+        - "run"
+        - "--rm"
+        - "-i"
+        - "--network=host"
+        - "mcp-server-image:latest"
+    environment_variables:
+      API_KEY: "${API_KEY}"
+```
+
+## Troubleshooting
+
+<Warning>
+**Common Issues:**
+
+1. **MCP server not found**: Ensure the package is installed globally or use `npx -y`
+2. **Connection timeout**: Increase `timeout` in connection_params
+3. **Permission errors**: Check directory permissions for stdio servers
+4. **Tools not appearing**: Verify the MCP server is running correctly
+5. **Environment variables not passed**: Check `environment_variables` section
+</Warning>
+
+### Debug MCP Connections
+
+Enable detailed logging:
+
+```yaml
+log:
+  stdout_log_level: DEBUG
+  log_file_level: DEBUG
+  log_file: mcp_debug.log
+```
+
+Test MCP server directly:
+
+```bash
+# Test stdio MCP server
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | \
+  npx -y @modelcontextprotocol/server-filesystem /tmp
+```
+
+## Best Practices
+
+<Tip>
+**MCP Integration Tips:**
+
+1. **Scope Access**: Only grant MCP servers access to necessary directories/resources
+2. **Credentials**: Use environment variables for API keys and tokens
+3. **Timeouts**: Set appropriate timeouts based on expected operation duration
+4. **Error Handling**: Include instructions for agents on handling MCP tool failures
+5. **Testing**: Test MCP servers independently before integration
+6. **Documentation**: Document which MCP tools are available in agent instructions
+7. **Security**: Review MCP server permissions and access carefully
+8. **Performance**: Consider caching for frequently accessed MCP resources
+</Tip>
+
+## MCP Resources
+
+### Official MCP Servers
+
+- **Filesystem**: Local file access
+- **Playwright**: Web browsing and automation
+- **GitHub**: GitHub API integration
+- **GitLab**: GitLab API integration
+- **Slack**: Slack API integration
+- **Google Drive**: Google Drive access
+- **PostgreSQL**: Database queries
+- **Fetch**: HTTP requests
+
+### Community MCP Servers
+
+Explore the MCP ecosystem:
+- [MCP Servers List](https://github.com/modelcontextprotocol/servers)
+- [Awesome MCP Servers](https://github.com/punkpeye/awesome-mcp-servers)
+
+### Building Custom MCP Servers
+
+Create your own MCP servers:
+- [MCP Server SDK](https://modelcontextprotocol.io/docs/tools/mcp-server-sdk)
+- [MCP Protocol Specification](https://spec.modelcontextprotocol.io/)
+
+## Next Steps
+
+- [Creating Custom Agents](/guides/creating-custom-agents) - Build agents with MCP tools
+- [Creating Custom Tools](/guides/creating-custom-tools) - Complement MCP with Python tools
+- [Building Gateways](/guides/building-gateways) - Create MCP-enabled gateways
+- [Workflow Development](/guides/workflow-development) - Orchestrate MCP-enabled agents
+
+## Real-World Examples
+
+Check out production MCP integrations:
+
+- `examples/agents/a2a_mcp_example.yaml` - Multiple MCP servers in one agent
+- `examples/agents/remote-mcp/` - Remote MCP server examples
+- `examples/gateways/mcp_gateway_example.yaml` - MCP gateway configuration
